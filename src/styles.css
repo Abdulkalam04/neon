@@ -1,0 +1,386 @@
+@import "tailwindcss" source(none);
+@source "../src";
+@import "tw-animate-css";
+
+@font-face {
+  font-family: "Audiowide";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/audiowide-400.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Chakra Petch";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/chakra-petch-400.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Chakra Petch";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("/fonts/chakra-petch-500.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Chakra Petch";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("/fonts/chakra-petch-600.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Chakra Petch";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("/fonts/chakra-petch-700.woff2") format("woff2");
+}
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --font-display: "Audiowide", system-ui, sans-serif;
+  --font-sans: "Chakra Petch", system-ui, sans-serif;
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-neon-cyan: var(--neon-cyan);
+  --color-neon-magenta: var(--neon-magenta);
+  --color-neon-lime: var(--neon-lime);
+}
+
+:root {
+  --radius: 1rem;
+  --background: oklch(0.12 0.03 265);
+  --foreground: oklch(0.96 0.01 240);
+  --card: oklch(0.2 0.04 265 / 45%);
+  --card-foreground: var(--foreground);
+  --popover: oklch(0.18 0.04 265);
+  --popover-foreground: var(--foreground);
+  --neon-cyan: oklch(0.85 0.15 205);
+  --neon-magenta: oklch(0.68 0.29 340);
+  --neon-lime: oklch(0.9 0.22 130);
+  --primary: var(--neon-cyan);
+  --primary-foreground: oklch(0.14 0.04 265);
+  --secondary: oklch(0.26 0.05 265);
+  --secondary-foreground: var(--foreground);
+  --muted: oklch(0.24 0.04 265);
+  --muted-foreground: oklch(0.7 0.04 250);
+  --accent: var(--neon-magenta);
+  --accent-foreground: oklch(0.98 0 0);
+  --destructive: oklch(0.65 0.24 25);
+  --destructive-foreground: oklch(0.98 0 0);
+  --border: oklch(1 0 0 / 12%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: var(--neon-cyan);
+  --gradient-bg: radial-gradient(
+    ellipse at 50% 0%,
+    oklch(0.22 0.08 265) 0%,
+    oklch(0.12 0.04 265) 45%,
+    oklch(0.06 0.01 265) 100%
+  );
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+  html,
+  body {
+    background: oklch(0.06 0.01 265);
+  }
+  body {
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    overscroll-behavior: none;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+  input,
+  textarea {
+    -webkit-user-select: text;
+    user-select: text;
+  }
+  button {
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+@utility bg-arena {
+  background: var(--gradient-bg);
+}
+
+@utility glass {
+  background: var(--card);
+  backdrop-filter: blur(18px) saturate(140%);
+  border: 1px solid var(--border);
+  box-shadow:
+    0 20px 60px -20px oklch(0 0 0 / 70%),
+    inset 0 1px 0 oklch(1 0 0 / 8%);
+}
+
+@utility text-glow {
+  background: linear-gradient(90deg, var(--neon-cyan), var(--neon-magenta) 55%, var(--neon-lime));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 0 18px color-mix(in oklab, var(--neon-cyan) 60%, transparent))
+    drop-shadow(0 0 40px color-mix(in oklab, var(--neon-magenta) 40%, transparent));
+}
+
+@utility neon-btn {
+  position: relative;
+  border-radius: var(--radius-xl);
+  border: 1px solid color-mix(in oklab, var(--glow) 60%, transparent);
+  background: color-mix(in oklab, var(--glow) 12%, transparent);
+  color: var(--foreground);
+  box-shadow:
+    0 0 0 0 transparent,
+    inset 0 0 20px color-mix(in oklab, var(--glow) 15%, transparent);
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.25s ease,
+    background 0.25s ease;
+  &:hover {
+    transform: translateY(-2px);
+    background: color-mix(in oklab, var(--glow) 22%, transparent);
+    box-shadow:
+      0 0 28px color-mix(in oklab, var(--glow) 55%, transparent),
+      inset 0 0 24px color-mix(in oklab, var(--glow) 25%, transparent);
+  }
+  &:active {
+    transform: translateY(0) scale(0.96);
+  }
+}
+
+@utility glow-cyan {
+  --glow: var(--neon-cyan);
+}
+@utility glow-magenta {
+  --glow: var(--neon-magenta);
+}
+@utility glow-lime {
+  --glow: var(--neon-lime);
+}
+
+@keyframes float-in {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@utility animate-float-in {
+  animation: float-in 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+@keyframes pulse-glow {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.75;
+  }
+}
+@utility animate-pulse-glow {
+  animation: pulse-glow 3s ease-in-out infinite;
+}
+
+/*
+ * Safe-area helpers — inset the HUD and touch controls away from notches and home bars.
+ * Uses env() so they degrade to 0px on desktop/unsupported browsers.
+ */
+@utility safe-top {
+  padding-top: max(0.75rem, env(safe-area-inset-top));
+}
+@utility safe-bottom {
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+}
+@utility safe-left {
+  padding-left: max(0.75rem, env(safe-area-inset-left));
+}
+@utility safe-right {
+  padding-right: max(0.75rem, env(safe-area-inset-right));
+}
+
+/* Inset values as margin (for absolutely-positioned elements). */
+@utility inset-safe-top {
+  top: max(0.75rem, env(safe-area-inset-top));
+}
+@utility inset-safe-bottom {
+  bottom: max(1.5rem, env(safe-area-inset-bottom));
+}
+@utility inset-safe-left {
+  left: max(1.5rem, env(safe-area-inset-left));
+}
+@utility inset-safe-right {
+  right: max(1.5rem, env(safe-area-inset-right));
+}
+
+.game-screen {
+  touch-action: none;
+  overscroll-behavior: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  height: 100dvh;
+  min-height: 100svh;
+}
+
+.pause-overlay {
+  z-index: 50;
+  pointer-events: auto;
+  touch-action: pan-y;
+  overscroll-behavior: contain;
+  background: rgb(3 4 10 / 78%);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+.pause-panel {
+  pointer-events: auto;
+  touch-action: pan-y;
+  scrollbar-width: thin;
+}
+.pause-panel button:focus-visible,
+.pause-panel input:focus-visible {
+  outline: 2px solid var(--neon-cyan);
+  outline-offset: 3px;
+}
+
+.joystick {
+  position: absolute;
+  z-index: 12;
+  width: clamp(7.5rem, 19vw, 10rem);
+  height: clamp(7.5rem, 19vw, 10rem);
+  border-radius: 999px;
+  touch-action: none;
+  opacity: 0;
+  animation: control-in 180ms ease-out forwards;
+}
+.joystick-surface {
+  position: absolute;
+  inset: 0;
+  z-index: 11;
+  touch-action: none;
+}
+.boost-surface {
+  position: absolute;
+  inset: 0 0 0 50%;
+  z-index: 10;
+  touch-action: none;
+}
+.joystick-fixed {
+  left: max(1.5rem, env(safe-area-inset-left));
+  bottom: max(1.5rem, env(safe-area-inset-bottom));
+}
+.joystick-floating {
+  pointer-events: auto;
+}
+.joystick-knob {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 38%;
+  height: 38%;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--neon-cyan) 70%, white);
+  box-shadow:
+    0 0 24px var(--neon-cyan),
+    inset 0 2px 6px rgb(255 255 255 / 45%);
+  transition: transform 80ms ease-out;
+}
+.joystick-arrow {
+  position: absolute;
+  inset: 25%;
+  border: 1px solid rgb(255 255 255 / 16%);
+  border-top-color: rgb(255 255 255 / 45%);
+  border-radius: 999px;
+  transform: rotate(45deg);
+}
+.boost-control {
+  position: absolute;
+  z-index: 12;
+  right: max(1.25rem, env(safe-area-inset-right));
+  bottom: max(1.5rem, env(safe-area-inset-bottom));
+  width: clamp(5.25rem, 14vw, 6.5rem);
+  height: clamp(5.25rem, 14vw, 6.5rem);
+  border-radius: 999px;
+  touch-action: none;
+  font-family: var(--font-display);
+  font-size: clamp(0.65rem, 2vw, 0.8rem);
+  background: radial-gradient(circle, rgb(255 43 214 / 26%), rgb(10 14 32 / 75%));
+}
+.boost-control::before {
+  content: "";
+  position: absolute;
+  inset: 5px;
+  border: 2px solid rgb(255 255 255 / 15%);
+  border-radius: inherit;
+}
+.boost-ring {
+  position: absolute;
+  inset: 8px;
+  border-radius: inherit;
+  border: 3px solid var(--neon-lime);
+  opacity: 0.8;
+}
+.boost-control.boosting {
+  transform: scale(0.96);
+  box-shadow: 0 0 30px rgb(255 43 214 / 60%);
+}
+@keyframes control-in {
+  from {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pause-overlay,
+  .pause-overlay .pause-panel {
+    animation: none !important;
+    scroll-behavior: auto !important;
+    transition: none !important;
+  }
+  .joystick {
+    animation: none;
+    opacity: 1;
+  }
+  .boost-control {
+    transition: none;
+  }
+}

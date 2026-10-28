@@ -1,0 +1,74 @@
+name: Android release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v4
+      - run: npm ci
+      - name: Validate production multiplayer endpoints
+        env:
+          VITE_WS_URL: ${{ vars.VITE_WS_URL }}
+          VITE_HTTP_URL: ${{ vars.VITE_HTTP_URL }}
+        shell: bash
+        run: |
+          [[ "$VITE_WS_URL" == wss://* ]] || { echo "Set repository variable VITE_WS_URL to the production wss:// endpoint."; exit 1; }
+          [[ "$VITE_HTTP_URL" == https://* ]] || { echo "Set repository variable VITE_HTTP_URL to the production https:// base URL."; exit 1; }
+      - name: Confirm tag matches package version
+        shell: bash
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          test "${GITHUB_REF_NAME}" = "v${VERSION}" || {
+            echo "Tag ${GITHUB_REF_NAME} must match package version v${VERSION}."
+            exit 1
+          }
+      - name: Build app assets
+        env:
+          VITE_WS_URL: ${{ vars.VITE_WS_URL }}
+          VITE_HTTP_URL: ${{ vars.VITE_HTTP_URL }}
+        run: npm run build:app
+      - run: npx cap sync android
+      - name: Restore Android signing key
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        shell: bash
+        run: |
+          test -n "$ANDROID_KEYSTORE_BASE64" || { echo "Missing ANDROID_KEYSTORE_BASE64 secret"; exit 1; }
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/neon-serpent-release.jks"
+          echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/neon-serpent-release.jks" >> "$GITHUB_ENV"
+      - name: Build signed AAB and APK
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          cd android
+          ./gradlew bundleRelease assembleRelease
+      - uses: actions/upload-artifact@v4
+        with:
+          name: neon-serpent-android-${{ github.ref_name }}
+          path: |
+            android/app/build/outputs/bundle/release/*.aab
+            android/app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+          retention-days: 30

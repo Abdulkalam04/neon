@@ -1,0 +1,21 @@
+{
+  "name": "Neon Serpent",
+  "short_name": "Neon Serpent",
+  "description": "A polished neon multiplayer snake arena.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#020923",
+  "theme_color": "#020923",
+  "icons": [
+    {
+      "src": "/favicon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/favicon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

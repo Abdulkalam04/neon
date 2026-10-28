@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: neon-serpent-server
+    runtime: node
+    region: singapore
+    plan: free
+    numInstances: 1
+    buildCommand: npm ci && npm run server:build
+    startCommand: npm run server:start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: 24.20.0
+      # Set this manually in the Render dashboard; replace <my-site> with the website's origin.
+      # https://<my-site>,http://localhost,https://localhost,capacitor://localhost
+      - key: ALLOWED_ORIGINS
+        sync: false
+      - key: ALLOW_NO_ORIGIN
+        value: "false"
