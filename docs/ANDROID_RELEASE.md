@@ -16,10 +16,10 @@ creating the matching `v<version>` tag.
 The Android code packs the version as `major * 1,000,000 + minor * 1,000 +
 patch` (minor and patch components must each be below 1000).
 
-Before the first published build, replace `com.yourname.neonserpent` with your
-own unique application ID in `capacitor.config.ts` and in both `namespace` and
-`applicationId` in `android/app/build.gradle`. Changing the ID after publishing
-creates a different Play app.
+The configured application ID is `com.abdulkalam04.neonserpent`. Keep it consistent in
+`capacitor.config.ts`, Android's `namespace` and `applicationId`, and the Xcode
+bundle identifier. Changing the ID after publishing creates a different Play
+app.
 
 ## Create and protect a release keystore
 

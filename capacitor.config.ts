@@ -1,7 +1,7 @@
 import type { CapacitorConfig } from "@capacitor/cli";
 
 const config: CapacitorConfig = {
-  appId: "com.yourname.neonserpent",
+  appId: "com.abdulkalam04.neonserpent",
   appName: "Neon Serpent",
   webDir: "dist-app",
   plugins: {

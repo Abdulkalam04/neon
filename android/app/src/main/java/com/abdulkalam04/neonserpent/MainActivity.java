@@ -1,4 +1,4 @@
-package com.yourname.neonserpent;
+package com.abdulkalam04.neonserpent;
 
 import android.os.Build;
 import android.os.Bundle;

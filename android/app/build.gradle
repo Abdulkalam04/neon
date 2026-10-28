@@ -18,10 +18,10 @@ if (signingPropertiesFile.exists()) {
 }
 
 android {
-    namespace = "com.yourname.neonserpent"
+    namespace = "com.abdulkalam04.neonserpent"
     compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "com.yourname.neonserpent"
+        applicationId "com.abdulkalam04.neonserpent"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode appVersionCode

@@ -7,8 +7,9 @@ platforms, but signing and archiving cannot be completed there.
 
 ## Prepare the app
 
-1. Choose a globally unique reverse-DNS bundle identifier, then replace the
-   placeholder `com.yourname.neonserpent` in `capacitor.config.ts`.
+1. The configured reverse-DNS bundle identifier is `com.abdulkalam04.neonserpent`.
+   Update `capacitor.config.ts` and the Xcode bundle identifier together if you
+   change it before publishing.
 2. Rebuild and sync the native project:
 
    ```sh
