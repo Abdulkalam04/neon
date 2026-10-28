@@ -1,5 +1,20 @@
 // Top-level build file where you can add configuration options common to all sub-projects/modules.
 
+try {
+    def processEnvironment = Class.forName("java.lang.ProcessEnvironment")
+    ['theEnvironment', 'theCaseInsensitiveEnvironment'].each { name ->
+        try {
+            def field = processEnvironment.getDeclaredField(name)
+            field.setAccessible(true)
+            def map = field.get(null)
+            if (map != null) {
+                map.remove("ANDROID_PREFS_ROOT")
+                map.remove("android_prefs_root")
+            }
+        } catch (ignored) {}
+    }
+} catch (ignored) {}
+
 buildscript {
     
     repositories {
@@ -7,7 +22,7 @@ buildscript {
         mavenCentral()
     }
     dependencies {
-        classpath 'com.android.tools.build:gradle:8.13.0'
+        classpath 'com.android.tools.build:gradle:9.4.1'
         classpath 'com.google.gms:google-services:4.4.4'
 
         // NOTE: Do not place your application dependencies here; they belong
