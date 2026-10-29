@@ -2,7 +2,7 @@
  * Image ("sprite") skins: a head picture + a repeating body tile, both drawn
  * facing +x (to the right) and rotated along the snake's path by drawSnake.
  *
- * To add a skin: drop `<id>-head.png` and `<id>-body.png` into /public/skins and
+ * To add a skin: drop `<id>-head.webp` and `<id>-body.webp` into /public/skins and
  * add one line to SPRITE_SKINS. It then appears in the customizer automatically.
  * Art must be your own / licensed (do not copy art from other games).
  */
@@ -161,6 +161,7 @@ export const SPRITE_SKINS: SpriteSkinDef[] = [
 const SPRITE_IDS = SPRITE_SKINS.map((s) => s.id);
 
 const cache = new Map<string, HTMLImageElement>();
+const loadedSprites = new Map<string, LoadedSprite>();
 const listeners = new Set<() => void>();
 
 /** Called whenever any sprite finishes loading (so static thumbnails can repaint). */
@@ -177,7 +178,9 @@ function load(url: string): HTMLImageElement | null {
   if (!img) {
     img = new Image();
     img.decoding = "async";
-    img.onload = () => listeners.forEach((cb) => cb());
+    img.onload = () => {
+      for (const listener of listeners) listener();
+    };
     img.src = url;
     cache.set(url, img);
   }
@@ -192,12 +195,22 @@ export interface LoadedSprite {
 /** Returns both images once loaded, otherwise null (callers fall back to circles). */
 export function getSprite(id: string | undefined): LoadedSprite | null {
   if (!id || !SPRITE_IDS.includes(id)) return null;
-  const head = load(`/skins/${id}-head.png`);
-  const body = load(`/skins/${id}-body.png`);
-  return head && body ? { head, body } : null;
+  const cached = loadedSprites.get(id);
+  if (cached) return cached;
+  const head = load(`/skins/${id}-head.webp`);
+  const body = load(`/skins/${id}-body.webp`);
+  if (!head || !body) return null;
+  const sprite = { head, body };
+  loadedSprites.set(id, sprite);
+  return sprite;
 }
 
-/** Start downloading every sprite (called once when the customizer/game mounts). */
-export function preloadSprites() {
-  for (const s of SPRITE_SKINS) getSprite(s.id);
+export function releaseSprites() {
+  for (const image of cache.values()) {
+    image.onload = null;
+    image.onerror = null;
+    image.src = "";
+  }
+  cache.clear();
+  loadedSprites.clear();
 }

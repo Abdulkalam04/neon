@@ -19,6 +19,9 @@ dist-ssr
 *.local
 *.jks
 *.keystore
+.env
+.env.*
+!.env.example
 android/keystore.properties
 android/app/release/
 

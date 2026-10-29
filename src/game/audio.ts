@@ -5,6 +5,9 @@ let boostGain: GainNode | null = null;
 let muted = false;
 let volume = 0.8;
 let lastEat = 0;
+let lastUiCue = 0;
+let boostSoundRequested = false;
+let boostGainTarget: number | null = null;
 
 export function unlockAudio() {
   if (typeof window === "undefined") return;
@@ -27,8 +30,10 @@ export function unlockAudio() {
     filter.Q.value = 0.8;
     boostGain = ctx.createGain();
     boostGain.gain.value = 0;
+    boostGainTarget = 0;
     src.connect(filter).connect(boostGain).connect(master);
     src.start();
+    syncBoostSound();
   }
   resumeAudio();
 }
@@ -45,6 +50,7 @@ export function suspendAudio() {
 export function setMuted(m: boolean) {
   muted = m;
   if (master && ctx) master.gain.setTargetAtTime(m ? 0 : 0.5 * volume, ctx.currentTime, 0.02);
+  syncBoostSound();
 }
 
 export function setVolume(v: number) {
@@ -75,9 +81,24 @@ export function playEat() {
   tone(f, f * 1.6, 0.08, "sine", 0.12);
 }
 
+export function playUiClick() {
+  const now = performance.now();
+  if (now - lastUiCue < 55) return;
+  lastUiCue = now;
+  tone(680, 520, 0.045, "sine", 0.045);
+}
+
 export function setBoostSound(on: boolean) {
+  boostSoundRequested = on;
+  syncBoostSound();
+}
+
+function syncBoostSound() {
   if (!ctx || !boostGain) return;
-  boostGain.gain.setTargetAtTime(on && !muted ? 0.08 : 0, ctx.currentTime, 0.06);
+  const target = boostSoundRequested && !muted ? 0.08 : 0;
+  if (target === boostGainTarget) return;
+  boostGainTarget = target;
+  boostGain.gain.setTargetAtTime(target, ctx.currentTime, 0.06);
 }
 
 export function playDeath() {

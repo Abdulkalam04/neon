@@ -1,11 +1,21 @@
 import { CFG, snakeRadius, type GameState, type Orb, type Snake, type Vec } from "@/game/core";
-import { drawSnake, type SkinPattern, type SnakeSkin, DEFAULT_SKIN } from "./drawSnake";
+import {
+  drawSnake,
+  type DrawSnakeOptions,
+  type SkinPattern,
+  type SnakeSkin,
+  DEFAULT_SKIN,
+  clearDrawSnakeCaches,
+} from "./drawSnake";
 import { QUALITY_PRESETS, type QualityProfile } from "@/lib/qualityProfile";
 
 // Reusable scratch buffer for downsampled body points — avoids a new array allocation
 // every frame per visible snake. Cleared and refilled in renderGame().
 const ptsBuffer: Vec[] = [];
 const orderedSnakes: Snake[] = [];
+const visibleNormalOrbs: Orb[] = [];
+const visibleDeathOrbs: Orb[] = [];
+const snakeDrawOptions: DrawSnakeOptions = {};
 const snakeVariants = new WeakMap<
   SnakeSkin,
   { low: SnakeSkin; medium: SnakeSkin; simplified: SnakeSkin }
@@ -29,7 +39,7 @@ export function createCamera(): Camera {
 
 /** Follows the player's head and zooms out as it grows. */
 export function updateCamera(cam: Camera, state: GameState, view: View, dt: number) {
-  const p = state.snakes.find((s) => s.id === state.playerId);
+  const p = findPlayerSnake(state);
   if (p) {
     const h = p.body[0]!;
     const k = 1 - Math.exp(-dt * 10);
@@ -52,14 +62,22 @@ export function orbScreenScale(zoom: number, refZoom = 1): number {
   return Math.max(1, Math.min(2.6, refZoom / zoom));
 }
 
-export const worldToScreen = (cam: Camera, view: View, p: Vec): Vec => ({
-  x: (p.x - cam.x) * cam.zoom + view.w / 2,
-  y: (p.y - cam.y) * cam.zoom + view.h / 2,
-});
-export const screenToWorld = (cam: Camera, view: View, p: Vec): Vec => ({
-  x: (p.x - view.w / 2) / cam.zoom + cam.x,
-  y: (p.y - view.h / 2) / cam.zoom + cam.y,
-});
+export function worldToScreen(cam: Camera, view: View, p: Vec, out: Vec = { x: 0, y: 0 }): Vec {
+  out.x = (p.x - cam.x) * cam.zoom + view.w / 2;
+  out.y = (p.y - cam.y) * cam.zoom + view.h / 2;
+  return out;
+}
+
+export function screenToWorld(cam: Camera, view: View, p: Vec, out: Vec = { x: 0, y: 0 }): Vec {
+  out.x = (p.x - view.w / 2) / cam.zoom + cam.x;
+  out.y = (p.y - view.h / 2) / cam.zoom + cam.y;
+  return out;
+}
+
+function findPlayerSnake(state: GameState): Snake | undefined {
+  for (const snake of state.snakes) if (snake.id === state.playerId) return snake;
+  return undefined;
+}
 
 const PATTERNS: SkinPattern[] = ["solid", "stripes", "gradient", "dots", "checker", "zebra"];
 const botSkinCache = new Map<number, SnakeSkin>();
@@ -195,26 +213,35 @@ export function renderGame(
   const t = opts.time;
   const low = !profile.glow;
   const orbScale = orbScreenScale(cam.zoom, cam.baseZoom);
-  let visibleDeathOrbs = 0;
+  const deathLimit = Math.min(120, Math.max(24, profile.maxParticles >> 2));
+  visibleNormalOrbs.length = 0;
+  visibleDeathOrbs.length = 0;
   for (let i = 0; i < state.orbs.length; i++) {
     const o = state.orbs[i]!;
-    if (
-      o.kind === "death" &&
-      o.x >= left - o.r * 4 &&
-      o.x <= right + o.r * 4 &&
-      o.y >= top - o.r * 4 &&
-      o.y <= bottom + o.r * 4
+    if (o.kind === "death") {
+      if (
+        visibleDeathOrbs.length < deathLimit &&
+        o.x >= left - o.r * 4 &&
+        o.x <= right + o.r * 4 &&
+        o.y >= top - o.r * 4 &&
+        o.y <= bottom + o.r * 4
+      ) {
+        visibleDeathOrbs.push(o);
+      }
+    } else if (
+      visibleNormalOrbs.length < profile.maxParticles &&
+      o.x >= left - 20 &&
+      o.x <= right + 20 &&
+      o.y >= top - 20 &&
+      o.y <= bottom + 20
     ) {
-      visibleDeathOrbs++;
+      visibleNormalOrbs.push(o);
     }
   }
-  const deathBudget = Math.min(120, visibleDeathOrbs, Math.max(24, profile.maxParticles >> 2));
+  const deathBudget = visibleDeathOrbs.length;
   const normalBudget = Math.max(0, profile.maxParticles - deathBudget);
-  let normalParticles = 0;
-  for (const o of state.orbs) {
-    if (o.kind === "death") continue; // drawn in the dedicated pass below
-    if (o.x < left - 20 || o.x > right + 20 || o.y < top - 20 || o.y > bottom + 20) continue;
-    if (normalParticles++ >= normalBudget) break;
+  for (let i = 0; i < Math.min(normalBudget, visibleNormalOrbs.length); i++) {
+    const o = visibleNormalOrbs[i]!;
     const pulse = profile.foodTwinkle ? 0.85 + 0.15 * Math.sin(t / 300 + o.id) : 1;
     if (low) {
       ctx.fillStyle = `hsl(${o.hue} 100% 66%)`;
@@ -228,21 +255,25 @@ export function renderGame(
   }
   // Death drops: bigger, brighter, golden-ringed and beaconing so a fresh kill is
   // recognisable from across the screen (and on the minimap).
-  let deathParticles = 0;
-  for (const o of state.orbs) {
-    if (o.kind !== "death") continue;
-    const margin = o.r * 4;
-    if (o.x < left - margin || o.x > right + margin || o.y < top - margin || o.y > bottom + margin)
-      continue;
-    if (deathParticles++ >= deathBudget) break;
-    drawDeathOrb(ctx, o, state.tick, t, low, orbScale, cam.zoom);
-  }
+  for (let i = 0; i < deathBudget; i++)
+    drawDeathOrb(ctx, visibleDeathOrbs[i]!, state.tick, t, low, orbScale, cam.zoom);
+  visibleNormalOrbs.length = 0;
+  visibleDeathOrbs.length = 0;
   ctx.restore();
 
   // Snakes (player last so it's on top).
   orderedSnakes.length = 0;
-  for (const snake of state.snakes) if (snake.alive) orderedSnakes.push(snake);
-  orderedSnakes.sort((a, b) => Number(a.isPlayer) - Number(b.isPlayer));
+  let playerSnake: Snake | undefined;
+  let boostingPlayer: Snake | undefined;
+  for (const snake of state.snakes) {
+    if (!snake.alive) continue;
+    if (snake.isPlayer) playerSnake = snake;
+    else orderedSnakes.push(snake);
+    if (profile.speedLines && !boostingPlayer && snake.id === state.playerId && snake.boosting) {
+      boostingPlayer = snake;
+    }
+  }
+  if (playerSnake) orderedSnakes.push(playerSnake);
   const ordered = orderedSnakes;
   for (const s of ordered) {
     const head = s.body[0]!;
@@ -290,16 +321,13 @@ export function renderGame(
         : profile.shadows
           ? sk
           : variants.medium;
-    drawSnake(ctx, renderSkin, ptsBuffer, {
-      radius: r,
-      time: t,
-      lookAt: s.isPlayer ? opts.mouseWorld : null,
-      boosting: s.boosting,
-    });
+    snakeDrawOptions.radius = r;
+    snakeDrawOptions.time = t;
+    snakeDrawOptions.lookAt = s.isPlayer ? opts.mouseWorld : null;
+    snakeDrawOptions.boosting = s.boosting;
+    snakeDrawOptions.glow = profile.glow;
+    drawSnake(ctx, renderSkin, ptsBuffer, snakeDrawOptions);
   }
-  const boostingPlayer = profile.speedLines
-    ? state.snakes.find((snake) => snake.id === state.playerId && snake.alive && snake.boosting)
-    : undefined;
   if (boostingPlayer) {
     const head = boostingPlayer.body[0]!;
     ctx.save();
@@ -351,12 +379,12 @@ export function renderGame(
       if (f.x < left - 60 || f.x > right + 60 || f.y < top - 60 || f.y > bottom + 60) continue;
       ctx.globalAlpha = 1 - age;
       ctx.fillStyle = "#9dff3a";
-      ctx.shadowColor = "#9dff3a";
-      ctx.shadowBlur = profile.glow ? 10 : 0;
+      if (profile.glow) {
+        ctx.drawImage(orbSprite(110), f.x - 12, f.y - age * 40 - 12, 24, 24);
+      }
       ctx.fillText(f.text, f.x, f.y - age * 40);
     }
     ctx.globalAlpha = 1;
-    ctx.shadowBlur = 0;
   }
   ctx.restore();
 
@@ -364,7 +392,7 @@ export function renderGame(
     drawDeathOrbIndicators(ctx, state, cam, view);
   }
 
-  const player = state.snakes.find((s) => s.id === state.playerId);
+  const player = findPlayerSnake(state);
   if (profile.vignette && player?.alive) {
     const distance = R - Math.hypot(player.body[0]!.x, player.body[0]!.y);
     if (distance < 250) {
@@ -453,6 +481,7 @@ function updateMinimapCache(state: GameState, cam: Camera, view: View) {
 }
 
 export function clearRenderCaches() {
+  clearDrawSnakeCaches();
   for (const canvas of orbSpriteCache.values()) canvas.width = canvas.height = 1;
   orbSpriteCache.clear();
   botSkinCache.clear();
@@ -617,8 +646,6 @@ function drawDeathOrbIndicators(
   ctx.fillStyle = "#ffd23a";
   ctx.strokeStyle = "#fff3a0";
   ctx.lineWidth = 1.5;
-  ctx.shadowColor = "#ffd23a";
-  ctx.shadowBlur = 12;
   for (let i = 0; i < deathArrowCandidates.length; i++) {
     const candidate = deathArrowCandidates[i]!;
     if (candidate.distanceSq === Infinity) continue;
@@ -689,24 +716,21 @@ function drawMinimap(ctx: CanvasRenderingContext2D, state: GameState, cam: Camer
   ctx.arc(cx, cy, size / 2, 0, Math.PI * 2);
   ctx.fill();
   ctx.stroke();
-  const me = state.snakes.find((s) => s.id === state.playerId);
-  const mh = me?.body[0] ?? { x: cam.x, y: cam.y };
+  const me = findPlayerSnake(state);
+  const mh = me?.body[0];
   // Death-drop beacons: pulsing gold dots so a fresh kill is visible at a glance.
   const mt = performance.now();
   ctx.fillStyle = "#ffd23a";
-  ctx.shadowColor = "#ffd23a";
-  ctx.shadowBlur = 6;
   ctx.globalAlpha = 0.55 + 0.45 * Math.sin(mt / 250);
   for (const o of state.orbs) {
     if (o.kind !== "death") continue;
     ctx.fillRect(cx + o.x * k - 1.7, cy + o.y * k - 1.7, 3.4, 3.4);
   }
   ctx.globalAlpha = 1;
-  ctx.shadowBlur = 0;
   for (const s of state.snakes) {
     if (!s.alive) continue;
     const hd = s.body[0]!;
-    if (!s.isPlayer && Math.hypot(hd.x - mh.x, hd.y - mh.y) > 1600) continue;
+    if (!s.isPlayer && mh && Math.hypot(hd.x - mh.x, hd.y - mh.y) > 1600) continue;
     ctx.fillStyle = s.isPlayer ? "#ffffff" : `hsl(${s.hue} 90% 60%)`;
     ctx.beginPath();
     ctx.arc(

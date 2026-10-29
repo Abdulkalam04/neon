@@ -1,11 +1,41 @@
 import { thinkBots, type WorldGrids } from "./ai";
 import { CFG, DIFFICULTY, segmentSpacing, snakeRadius } from "./config";
-import { createGrid, gridInsert, gridQuery } from "./grid";
+import { clearGrid, createGrid, gridInsert, gridQuery } from "./grid";
 import { rand } from "./rng";
 import { addOrb, spawnBot, spawnFood } from "./state";
 import type { GameState, Inputs, Snake } from "./types";
 
 const TAU = Math.PI * 2;
+interface UpdateScratch {
+  grids: WorldGrids;
+  eatenOrbs: Set<number>;
+  doomedSnakes: Set<number>;
+  deadSnakes: [Snake, Snake | null][];
+  aliveSnakes: Snake[];
+  aliveSnakeIndices: number[];
+}
+
+const updateScratchByState = new WeakMap<GameState, UpdateScratch>();
+
+function getUpdateScratch(state: GameState): UpdateScratch {
+  let scratch = updateScratchByState.get(state);
+  if (!scratch) {
+    scratch = {
+      grids: {
+        bodies: createGrid(CFG.gridCell, state.worldRadius),
+        orbs: createGrid(CFG.gridCell, state.worldRadius),
+      },
+      eatenOrbs: new Set(),
+      doomedSnakes: new Set(),
+      deadSnakes: [],
+      aliveSnakes: [],
+      aliveSnakeIndices: [],
+    };
+    updateScratchByState.set(state, scratch);
+  }
+  return scratch;
+}
+
 const angDiff = (a: number, b: number) => {
   let d = (a - b) % TAU;
   if (d > Math.PI) d -= TAU;
@@ -19,29 +49,41 @@ const angDiff = (a: number, b: number) => {
  * the returned value as the new state. No React, DOM or canvas access here.
  */
 export function update(state: GameState, inputs: Inputs, dt: number): GameState {
+  const scratch = getUpdateScratch(state);
   state.tick++;
-  state.events = [];
+  state.events.length = 0;
 
   for (const s of state.snakes) if (s.alive) moveSnake(state, s, inputs, dt);
 
-  const grids = buildGrids(state);
+  const grids = buildGrids(state, scratch.grids);
   attractFood(state, grids, dt);
-  eatFood(state, grids);
+  eatFood(state, grids, scratch.eatenOrbs);
   for (const s of state.snakes) if (s.alive) applyGrowth(s, dt);
-  const dead = findCollisions(state, grids);
+  const dead = findCollisions(state, grids, scratch);
   for (const [victim, killer] of dead) killSnake(state, victim, killer);
 
   thinkBots(state, grids);
 
   // Remove dead bots, schedule replacements, refill food.
-  state.snakes = state.snakes.filter((s) => s.alive || s.isPlayer);
-  state.respawnAt = state.respawnAt.filter((t) => {
-    if (t > state.tick) return true;
-    spawnBot(state);
-    return false;
-  });
-  const humanCount = state.snakes.filter((s) => s.isPlayer && s.alive).length;
-  const currentBots = state.snakes.filter((s) => !s.isPlayer).length;
+  let writeSnake = 0;
+  let humanCount = 0;
+  let currentBots = 0;
+  for (let i = 0; i < state.snakes.length; i++) {
+    const snake = state.snakes[i]!;
+    if (!snake.alive && !snake.isPlayer) continue;
+    state.snakes[writeSnake++] = snake;
+    if (snake.isPlayer && snake.alive) humanCount++;
+    else if (!snake.isPlayer) currentBots++;
+  }
+  state.snakes.length = writeSnake;
+
+  let writeRespawn = 0;
+  for (let i = 0; i < state.respawnAt.length; i++) {
+    const tick = state.respawnAt[i]!;
+    if (tick > state.tick) state.respawnAt[writeRespawn++] = tick;
+    else spawnBot(state);
+  }
+  state.respawnAt.length = writeRespawn;
   const targetBots =
     state.minTotalSnakes !== undefined
       ? Math.max(0, state.minTotalSnakes - humanCount)
@@ -124,16 +166,20 @@ function moveSnake(state: GameState, s: Snake, inputs: Inputs, dt: number) {
   if (s.body.length > n) s.body.length = n;
 }
 
-function buildGrids(state: GameState): WorldGrids {
-  const bodies = createGrid(CFG.gridCell, state.worldRadius);
-  const orbs = createGrid(CFG.gridCell, state.worldRadius);
-  state.snakes.forEach((s, si) => {
-    if (!s.alive) return;
-    for (let i = 0; i < s.body.length; i++)
-      gridInsert(bodies, s.body[i]!.x, s.body[i]!.y, si * 4096 + i);
-  });
-  state.orbs.forEach((o, i) => gridInsert(orbs, o.x, o.y, i));
-  return { bodies, orbs };
+function buildGrids(state: GameState, grids: WorldGrids): WorldGrids {
+  clearGrid(grids.bodies);
+  clearGrid(grids.orbs);
+  for (let si = 0; si < state.snakes.length; si++) {
+    const snake = state.snakes[si]!;
+    if (!snake.alive) continue;
+    for (let i = 0; i < snake.body.length; i++)
+      gridInsert(grids.bodies, snake.body[i]!.x, snake.body[i]!.y, si * 4096 + i);
+  }
+  for (let i = 0; i < state.orbs.length; i++) {
+    const orb = state.orbs[i]!;
+    gridInsert(grids.orbs, orb.x, orb.y, i);
+  }
+  return grids;
 }
 
 /**
@@ -163,8 +209,8 @@ function attractFood(state: GameState, grids: WorldGrids, dt: number) {
   }
 }
 
-function eatFood(state: GameState, grids: WorldGrids) {
-  const eaten = new Set<number>();
+function eatFood(state: GameState, grids: WorldGrids, eaten: Set<number>) {
+  eaten.clear();
   for (const s of state.snakes) {
     if (!s.alive) continue;
     const h = s.body[0]!;
@@ -183,7 +229,14 @@ function eatFood(state: GameState, grids: WorldGrids) {
       }
     });
   }
-  if (eaten.size) state.orbs = state.orbs.filter((_, i) => !eaten.has(i));
+  if (eaten.size) {
+    let write = 0;
+    for (let i = 0; i < state.orbs.length; i++) {
+      if (eaten.has(i)) continue;
+      state.orbs[write++] = state.orbs[i]!;
+    }
+    state.orbs.length = write;
+  }
 }
 
 /**
@@ -214,10 +267,19 @@ function expireDeathOrbs(state: GameState) {
     }
   }
   if (!any) return;
-  state.orbs = state.orbs.filter(
-    (o) =>
-      !(o.kind === "death" && o.born !== undefined && state.tick - o.born > CFG.deathOrbLifeTicks),
-  );
+  let write = 0;
+  for (let i = 0; i < state.orbs.length; i++) {
+    const orb = state.orbs[i]!;
+    if (
+      orb.kind === "death" &&
+      orb.born !== undefined &&
+      state.tick - orb.born > CFG.deathOrbLifeTicks
+    ) {
+      continue;
+    }
+    state.orbs[write++] = orb;
+  }
+  state.orbs.length = write;
 }
 
 /**
@@ -229,40 +291,48 @@ function expireDeathOrbs(state: GameState) {
  *   - A head hitting a body segment still kills the snake whose head hit.
  *   - Each death is processed once; already-doomed snakes skip further checks.
  */
-function findCollisions(state: GameState, grids: WorldGrids): [Snake, Snake | null][] {
-  // Use a Set to avoid scheduling the same snake for death twice.
-  const doomed = new Set<number>();
-  const out: [Snake, Snake | null][] = [];
-
-  const push = (victim: Snake, killer: Snake | null) => {
-    if (doomed.has(victim.id)) return;
-    doomed.add(victim.id);
-    out.push([victim, killer]);
-  };
+function findCollisions(
+  state: GameState,
+  grids: WorldGrids,
+  scratch: UpdateScratch,
+): [Snake, Snake | null][] {
+  const doomed = scratch.doomedSnakes;
+  const out = scratch.deadSnakes;
+  const alive = scratch.aliveSnakes;
+  const aliveIndices = scratch.aliveSnakeIndices;
+  doomed.clear();
+  out.length = 0;
+  alive.length = 0;
+  aliveIndices.length = 0;
 
   // First pass: boundary kills (no killer).
-  state.snakes.forEach((s) => {
-    if (!s.alive) return;
+  for (const s of state.snakes) {
+    if (!s.alive) continue;
     const h = s.body[0]!;
     const hr = snakeRadius(s.length);
-    if (Math.hypot(h.x, h.y) > state.worldRadius - hr) push(s, null);
-  });
+    if (Math.hypot(h.x, h.y) > state.worldRadius - hr) scheduleCollision(scratch, s, null);
+  }
 
   // Second pass: head-to-head and head-to-body.
   // We only look at pairs once (si < oi) for head-to-head so the rule applies
   // symmetrically regardless of snake order in the array.
-  const alive = state.snakes
-    .map((s, i) => ({ s, i }))
-    .filter(({ s }) => s.alive && !doomed.has(s.id));
+  for (let i = 0; i < state.snakes.length; i++) {
+    const snake = state.snakes[i]!;
+    if (!snake.alive || doomed.has(snake.id)) continue;
+    alive.push(snake);
+    aliveIndices.push(i);
+  }
 
   // Resolve head-to-head pairs first; outcomes are committed before head-to-body
   // so an already-doomed snake's body doesn't cause a second kill.
   for (let a = 0; a < alive.length; a++) {
-    const { s: sa, i: sia } = alive[a]!;
+    const sa = alive[a]!;
+    const sia = aliveIndices[a]!;
     const ha = sa.body[0]!;
     const hra = snakeRadius(sa.length);
     for (let b = a + 1; b < alive.length; b++) {
-      const { s: sb, i: sib } = alive[b]!;
+      const sb = alive[b]!;
+      const sib = aliveIndices[b]!;
       if (sib === sia) continue; // shouldn't happen but guard anyway
       const hb = sb.body[0]!;
       const hrb = snakeRadius(sb.length);
@@ -273,22 +343,23 @@ function findCollisions(state: GameState, grids: WorldGrids): [Snake, Snake | nu
           lenB = sb.length;
         if (Math.abs(lenA - lenB) <= 1) {
           // Equal — both die.
-          push(sa, null);
-          push(sb, null);
+          scheduleCollision(scratch, sa, null);
+          scheduleCollision(scratch, sb, null);
         } else if (lenA > lenB) {
           // A wins.
-          push(sb, sa);
+          scheduleCollision(scratch, sb, sa);
         } else {
           // B wins.
-          push(sa, sb);
+          scheduleCollision(scratch, sa, sb);
         }
       }
     }
   }
 
   // Head-to-body pass (skip snakes already doomed).
-  state.snakes.forEach((s, si) => {
-    if (!s.alive || doomed.has(s.id)) return;
+  for (let si = 0; si < state.snakes.length; si++) {
+    const s = state.snakes[si]!;
+    if (!s.alive || doomed.has(s.id)) continue;
     const h = s.body[0]!;
     const hr = snakeRadius(s.length);
     let killer: Snake | null = null;
@@ -308,10 +379,16 @@ function findCollisions(state: GameState, grids: WorldGrids): [Snake, Snake | nu
       }
       return false;
     });
-    if (killer) push(s, killer);
-  });
+    if (killer) scheduleCollision(scratch, s, killer);
+  }
 
   return out;
+}
+
+function scheduleCollision(scratch: UpdateScratch, victim: Snake, killer: Snake | null) {
+  if (scratch.doomedSnakes.has(victim.id)) return;
+  scratch.doomedSnakes.add(victim.id);
+  scratch.deadSnakes.push([victim, killer]);
 }
 
 function killSnake(state: GameState, s: Snake, killer: Snake | null) {

@@ -23,13 +23,32 @@ export interface QualityProfile {
 
 const profiles: QualityProfile[] = [
   {
-    resolutionScale: 0.6,
-    maxParticles: 16,
+    resolutionScale: 0.42,
+    maxParticles: 8,
     glow: false,
     shadows: false,
     nebula: false,
     parallax: false,
     ambientDust: false,
+    speedLines: false,
+    trailLength: 0.25,
+    snakeScales: false,
+    snakeShine: false,
+    eyeDetail: false,
+    shake: false,
+    vignette: false,
+    foodTwinkle: false,
+    minimapIntervalMs: 320,
+    nameTagDetail: false,
+  },
+  {
+    resolutionScale: 0.54,
+    maxParticles: 20,
+    glow: false,
+    shadows: false,
+    nebula: false,
+    parallax: false,
+    ambientDust: true,
     speedLines: false,
     trailLength: 0.4,
     snakeScales: false,
@@ -38,26 +57,7 @@ const profiles: QualityProfile[] = [
     shake: false,
     vignette: false,
     foodTwinkle: false,
-    minimapIntervalMs: 200,
-    nameTagDetail: false,
-  },
-  {
-    resolutionScale: 0.72,
-    maxParticles: 40,
-    glow: false,
-    shadows: false,
-    nebula: false,
-    parallax: false,
-    ambientDust: true,
-    speedLines: false,
-    trailLength: 0.6,
-    snakeScales: false,
-    snakeShine: false,
-    eyeDetail: false,
-    shake: false,
-    vignette: false,
-    foodTwinkle: false,
-    minimapIntervalMs: 150,
+    minimapIntervalMs: 240,
     nameTagDetail: false,
   },
   {
@@ -158,7 +158,7 @@ export function profileFor(choice: QualityChoice, tier: AutoTier, step = 0): Qua
   for (let i = 0; i < Math.max(0, step); i++) {
     switch (i % 6) {
       case 0:
-        profile.resolutionScale = Math.max(0.6, profile.resolutionScale - 0.12);
+        profile.resolutionScale = Math.max(0.32, profile.resolutionScale - 0.12);
         break;
       case 1:
         profile.maxParticles = Math.max(8, Math.floor(profile.maxParticles * 0.65));

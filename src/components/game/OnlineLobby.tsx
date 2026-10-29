@@ -2,18 +2,13 @@ import { useEffect, useState } from "react";
 import { REGIONS, type RegionId } from "@/game/net/types";
 import { shareText } from "@/lib/platform";
 import { validateServerUrl } from "@/lib/serverConfig";
+import { normalizeRoomCode } from "@/game/net/roomCode";
 
 const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const makeRoomCode = () =>
   Array.from({ length: 5 }, () => CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]).join(
     "",
   );
-export const normalizeRoomCode = (code: string) =>
-  code
-    .toUpperCase()
-    .replace(/[^A-Z0-9]/g, "")
-    .slice(0, 5);
-
 export function OnlineLobby(props: {
   region: RegionId;
   onRegion: (region: RegionId) => void;
@@ -42,13 +37,24 @@ export function OnlineLobby(props: {
   const [joinCode, setJoinCode] = useState("");
   const [shareMessage, setShareMessage] = useState("");
   const [urlError, setUrlError] = useState("");
+  const [onlineStatus, setOnlineStatus] = useState(
+    typeof navigator === "undefined" ? true : navigator.onLine,
+  );
 
   useEffect(() => {
+    const handleOnline = () => setOnlineStatus(true);
+    const handleOffline = () => setOnlineStatus(false);
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
     const timer = setInterval(
       () => setOnline((count) => Math.max(900, count + Math.round((Math.random() - 0.5) * 40))),
       1500,
     );
-    return () => clearInterval(timer);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
   }, []);
 
   const shareRoomCode = async () => {
@@ -78,6 +84,16 @@ export function OnlineLobby(props: {
           {REGIONS.find((item) => item.id === region)?.label} · {online.toLocaleString()} players
           online
         </p>
+        {!onlineStatus && (
+          <div
+            className="glass w-full rounded-xl border-amber-300/50 bg-amber-950/80 px-4 py-3"
+            role="status"
+          >
+            <p className="text-sm font-semibold text-amber-100">
+              You’re offline. Multiplayer will retry when your connection is back.
+            </p>
+          </div>
+        )}
         {isWakingUp && (
           <div className="glass w-full rounded-xl border border-amber-400/30 bg-amber-950/30 p-4 text-amber-200">
             <p className="text-sm">Free servers can take up to a minute to start.</p>
@@ -95,6 +111,15 @@ export function OnlineLobby(props: {
               />
             </div>
             <p className="mt-2 text-right text-xs tabular-nums">{seconds} / 60 seconds</p>
+            {seconds >= 45 && (
+              <button
+                type="button"
+                onClick={onPlay}
+                className="neon-btn glow-cyan mt-3 min-h-11 w-full px-4 text-sm"
+              >
+                Retry server connection
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -108,6 +133,23 @@ export function OnlineLobby(props: {
         <span className="h-2 w-2 animate-pulse rounded-full bg-neon-lime" />
         {online.toLocaleString()} players online
       </p>
+      {!onlineStatus && (
+        <div
+          className="glass mt-4 flex w-full flex-wrap items-center justify-between gap-3 rounded-xl border-amber-300/50 bg-amber-950/80 px-4 py-3"
+          role="status"
+        >
+          <p className="text-sm font-semibold text-amber-100">
+            You’re offline. Check your connection to join multiplayer.
+          </p>
+          <button
+            type="button"
+            onClick={() => onPlay()}
+            className="neon-btn glow-cyan min-h-11 px-4 text-sm"
+          >
+            Retry
+          </button>
+        </div>
+      )}
 
       <div className="mt-6 w-full">
         <p className="mb-2 text-xs tracking-widest text-muted-foreground uppercase">
@@ -119,7 +161,7 @@ export function OnlineLobby(props: {
               key={item.id}
               onClick={() => onRegion(item.id)}
               aria-pressed={region === item.id}
-              className={`neon-btn glow-cyan flex min-h-12 flex-col items-center px-2 py-2 text-sm ${region === item.id ? "" : "opacity-50"}`}
+              className={`neon-btn glow-cyan flex min-h-12 flex-col items-center px-2 py-2 text-sm ${region === item.id ? "" : "border-border bg-background text-foreground"}`}
             >
               {item.label}
               <span className="text-[10px] text-muted-foreground">~{item.basePing} ms</span>

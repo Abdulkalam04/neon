@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { onSpriteLoaded, preloadSprites } from "@/game/render/spriteSkins";
+import { onSpriteLoaded } from "@/game/render/spriteSkins";
 import { drawSnake, type EyeShape, type Point, type SnakeSkin } from "@/game/render/drawSnake";
 
 /**
@@ -22,7 +22,10 @@ function useCanvas(draw: DrawFn, deps: readonly unknown[], animate = false) {
     if (!ctx) return;
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     let raf = 0;
+    let visible = false;
+    let disposed = false;
     const paint = (t: number) => {
+      if (!visible || disposed) return;
       const w = c.clientWidth,
         h = c.clientHeight;
       if (w === 0 || h === 0) return;
@@ -37,22 +40,43 @@ function useCanvas(draw: DrawFn, deps: readonly unknown[], animate = false) {
     const reduce =
       typeof window.matchMedia === "function" &&
       window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (animate && !reduce) {
-      const loop = (t: number) => {
-        paint(t);
-        raf = requestAnimationFrame(loop);
-      };
+    const loop = (t: number) => {
+      if (!visible || disposed) return;
+      paint(t);
       raf = requestAnimationFrame(loop);
-      return () => cancelAnimationFrame(raf);
-    }
-    paint(0);
-    preloadSprites();
+    };
+    const setVisible = (next: boolean) => {
+      if (visible === next) return;
+      visible = next;
+      if (visible) {
+        if (animate && !reduce) raf = requestAnimationFrame(loop);
+        else paint(0);
+      } else {
+        cancelAnimationFrame(raf);
+        raf = 0;
+        c.width = 1;
+        c.height = 1;
+      }
+    };
+    const observer =
+      typeof IntersectionObserver === "undefined"
+        ? null
+        : new IntersectionObserver(([entry]) => setVisible(entry?.isIntersecting === true), {
+            rootMargin: "96px",
+          });
+    observer?.observe(c);
+    if (!observer) setVisible(true);
     const off = onSpriteLoaded(() => paint(0));
     const ro = new ResizeObserver(() => paint(0));
     ro.observe(c);
     return () => {
+      disposed = true;
+      cancelAnimationFrame(raf);
       off();
       ro.disconnect();
+      observer?.disconnect();
+      c.width = 1;
+      c.height = 1;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [animate, ...deps]);

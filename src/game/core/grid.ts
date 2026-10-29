@@ -4,11 +4,26 @@ export interface Grid {
   cols: number;
   offset: number;
   cells: Map<number, number[]>;
+  recycledCells: number[][];
 }
 
 export function createGrid(cell: number, worldRadius: number): Grid {
   const offset = worldRadius + cell;
-  return { cell, offset, cols: Math.ceil((offset * 2) / cell) + 1, cells: new Map() };
+  return {
+    cell,
+    offset,
+    cols: Math.ceil((offset * 2) / cell) + 1,
+    cells: new Map(),
+    recycledCells: [],
+  };
+}
+
+export function clearGrid(g: Grid) {
+  for (const cell of g.cells.values()) {
+    cell.length = 0;
+    g.recycledCells.push(cell);
+  }
+  g.cells.clear();
 }
 
 function key(g: Grid, cx: number, cy: number) {
@@ -19,9 +34,12 @@ export function gridInsert(g: Grid, x: number, y: number, value: number) {
   const cx = Math.floor((x + g.offset) / g.cell);
   const cy = Math.floor((y + g.offset) / g.cell);
   const k = key(g, cx, cy);
-  const list = g.cells.get(k);
-  if (list) list.push(value);
-  else g.cells.set(k, [value]);
+  let list = g.cells.get(k);
+  if (!list) {
+    list = g.recycledCells.pop() ?? [];
+    g.cells.set(k, list);
+  }
+  list.push(value);
 }
 
 /** Calls fn for every payload in cells overlapping the circle. Return true from fn to stop early. */

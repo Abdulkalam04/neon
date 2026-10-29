@@ -6,6 +6,7 @@ import {
   addBackButtonListener,
   exitApp,
   hideSplashScreen,
+  lockLandscape,
   setStatusBarHidden,
 } from "../lib/platform";
 import { installAppErrorReporter } from "../lib/app-error-reporter";
@@ -21,7 +22,10 @@ export function AppRuntime() {
 
   useEffect(() => {
     const removeErrorReporter = installAppErrorReporter();
-    void hideSplashScreen().catch(console.error);
+    void lockLandscape()
+      .catch(console.error)
+      .then(() => hideSplashScreen())
+      .catch(console.error);
     void setStatusBarHidden(false).catch(console.error);
 
     const unlock = () => unlockAudio();

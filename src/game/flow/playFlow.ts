@@ -7,6 +7,7 @@ type PlayPhase =
 interface PlayRunStats {
   killedBy: string | null;
   finalScore: number;
+  rank?: number;
   bestScore: number;
   seconds: number;
   kills: number;

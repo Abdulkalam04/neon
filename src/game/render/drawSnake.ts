@@ -4,6 +4,9 @@ import { getSprite } from "./spriteSkins";
 export { BACKS, HATS, WINGS } from "./accessories";
 export type { BackId, HatId, WingId } from "./accessories";
 
+const SINGLE_EYE_SPOT = [0] as const;
+const PAIRED_EYE_SPOTS = [-1, 1] as const;
+
 export const PATTERN_LIST = [
   "solid",
   "stripes",
@@ -77,6 +80,7 @@ export interface DrawSnakeOptions {
   /** World-space point the eyes should look at (used when skin.eyes.followMouse). */
   lookAt?: Point | null;
   boosting?: boolean;
+  glow?: boolean;
 }
 
 /** Color of segment i (0 = head) for the given skin. */
@@ -133,6 +137,102 @@ function shade(hex: string, f: number) {
   return hex.startsWith("#") ? mix(hex, "#000000", f) : "rgba(0,0,0,0.6)";
 }
 
+const snakeGlowSprites = new Map<number, HTMLCanvasElement | null>();
+
+function glowSprite(color: string): HTMLCanvasElement | null {
+  if (typeof document === "undefined") return null;
+  let hue = colorHueCache.get(color);
+  if (hue === undefined) {
+    hue = colorHue(color);
+    if (colorHueCache.size >= 256) colorHueCache.clear();
+    colorHueCache.set(color, hue);
+  }
+  const key = Math.round(hue / 30) % 12;
+  if (snakeGlowSprites.has(key)) return snakeGlowSprites.get(key) ?? null;
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = 64;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    snakeGlowSprites.set(key, null);
+    return null;
+  }
+  const gradient = ctx.createRadialGradient(32, 32, 1, 32, 32, 32);
+  gradient.addColorStop(0, `hsla(${key * 30} 100% 65% / 0.55)`);
+  gradient.addColorStop(0.35, `hsla(${key * 30} 100% 60% / 0.24)`);
+  gradient.addColorStop(1, `hsla(${key * 30} 100% 55% / 0)`);
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, 64, 64);
+  snakeGlowSprites.set(key, canvas);
+  return canvas;
+}
+
+function colorHue(color: string): number {
+  if (color.startsWith("hsl")) {
+    let end = 4;
+    while (end < color.length && color.charCodeAt(end) >= 48 && color.charCodeAt(end) <= 57) end++;
+    return Number(color.slice(4, end)) || 0;
+  }
+  let r = 0,
+    g = 0,
+    b = 0;
+  if (color.charCodeAt(0) === 35) {
+    const hex = parseInt(color.slice(1), 16);
+    r = (hex >> 16) & 255;
+    g = (hex >> 8) & 255;
+    b = hex & 255;
+  } else {
+    const first = color.indexOf("(") + 1;
+    const comma = color.indexOf(",", first);
+    const secondComma = color.indexOf(",", comma + 1);
+    r = Number(color.slice(first, comma));
+    g = Number(color.slice(comma + 1, secondComma));
+    b = Number(color.slice(secondComma + 1));
+  }
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  if (max === min) return 0;
+  const delta = max - min;
+  const hue =
+    max === r
+      ? (g - b) / delta + (g < b ? 6 : 0)
+      : max === g
+        ? (b - r) / delta + 2
+        : (r - g) / delta + 4;
+  return hue * 60;
+}
+
+const colorHueCache = new Map<string, number>();
+let segmentPaletteCache = new WeakMap<
+  SnakeSkin,
+  { total: number; animationBucket: number; colors: string[] }
+>();
+
+export function clearDrawSnakeCaches() {
+  for (const canvas of snakeGlowSprites.values()) {
+    if (canvas) canvas.width = canvas.height = 1;
+  }
+  snakeGlowSprites.clear();
+  colorHueCache.clear();
+  segmentPaletteCache = new WeakMap();
+}
+
+function segmentPalette(skin: SnakeSkin, total: number, time: number): string[] {
+  const animationBucket = skin.pattern === "rainbow" ? Math.floor(((time * 0.06) % 360) / 15) : 0;
+  let palette = segmentPaletteCache.get(skin);
+  if (!palette) {
+    palette = { total: 0, animationBucket: -1, colors: [] };
+    segmentPaletteCache.set(skin, palette);
+  }
+  if (palette.total !== total || palette.animationBucket !== animationBucket) {
+    palette.total = total;
+    palette.animationBucket = animationBucket;
+    palette.colors.length = total;
+    const paletteTime = skin.pattern === "rainbow" ? (animationBucket * 15) / 0.06 : 0;
+    for (let i = 0; i < total; i++) palette.colors[i] = segmentColor(skin, i, total, paletteTime);
+  }
+  return palette.colors;
+}
+
 /** Draws a snake. `points` are ordered head first. */
 export function drawSnake(
   ctx: CanvasRenderingContext2D,
@@ -144,15 +244,16 @@ export function drawSnake(
   if (n === 0) return;
   const r = options.radius ?? 12;
   const t = options.time ?? 0;
+  const glowEnabled = options.glow !== false;
   ctx.save();
 
   // Effects wrap the whole body: an aura behind it, particles in front of it.
-  if (options.boosting) drawBoostBack(ctx, skin.boost, points, r, t);
+  if (options.boosting && glowEnabled) drawBoostBack(ctx, skin.boost, points, r, t);
 
   const sprite = n >= 2 ? getSprite(skin.sprite) : null;
   if (sprite) {
     // Illustrated skins have no per-segment glow, so give them one soft halo.
-    const g = Math.min(1, skin.glow + (options.boosting ? 0.35 : 0));
+    const g = glowEnabled ? Math.min(1, skin.glow + (options.boosting ? 0.35 : 0)) : 0;
     if (g > 0.05) drawAura(ctx, points, r * (1.5 + g * 0.6), skin.primary, 0.14 + g * 0.3);
     drawSpriteBody(ctx, sprite.body, points, r);
   }
@@ -178,40 +279,64 @@ export function drawSnake(
     ctx.stroke();
     ctx.restore();
   }
-  for (let i = sprite ? -1 : n - 1; i >= 0; i--) {
-    const p = points[i]!;
-    const col = segmentColor(skin, i, n, t);
-    const taper = r * (1 - (i / n) * 0.55) * (i === 0 ? 1.14 : 1);
-    let glow = skin.glow;
-    if (skin.pattern === "glow-pulse")
-      glow *= 0.4 + 0.6 * (0.5 + 0.5 * Math.sin(t / 220 - i * 0.45));
-    if (options.boosting) glow = Math.min(1, glow + 0.35);
-    ctx.shadowColor = col;
-    ctx.shadowBlur = glow * 32;
-    ctx.fillStyle = col;
+  const colors = segmentPalette(skin, n, t);
+  const batchSolidBody =
+    !sprite &&
+    !glowEnabled &&
+    !options.boosting &&
+    !skin.sparkle &&
+    skin.pattern === "solid" &&
+    skin.outline <= 0 &&
+    skin.shading === "flat";
+  if (batchSolidBody) {
+    ctx.fillStyle = skin.primary;
     ctx.beginPath();
-    ctx.arc(p.x, p.y, taper, 0, Math.PI * 2);
+    for (let i = n - 1; i >= 0; i--) {
+      const p = points[i]!;
+      const taper = r * (1 - (i / n) * 0.55) * (i === 0 ? 1.14 : 1);
+      ctx.moveTo(p.x + taper, p.y);
+      ctx.arc(p.x, p.y, taper, 0, Math.PI * 2);
+    }
     ctx.fill();
-    if (skin.outline > 0) {
-      ctx.shadowBlur = 0;
-      ctx.lineWidth = skin.outline;
-      ctx.strokeStyle = shade(skin.primary, 0.65);
-      ctx.stroke();
-    }
-    if (skin.pattern === "dots" && i % 3 === 1) {
-      ctx.shadowBlur = 0;
-      ctx.fillStyle = skin.secondary;
+  } else {
+    for (let i = sprite ? -1 : n - 1; i >= 0; i--) {
+      const p = points[i]!;
+      const col = i < 0 ? skin.primary : colors[i]!;
+      const taper = r * (1 - (i / n) * 0.55) * (i === 0 ? 1.14 : 1);
+      let glow = skin.glow;
+      if (skin.pattern === "glow-pulse")
+        glow *= 0.4 + 0.6 * (0.5 + 0.5 * Math.sin(t / 220 - i * 0.45));
+      if (options.boosting) glow = Math.min(1, glow + 0.35);
+      if (glowEnabled && glow > 0.05) {
+        const sprite = glowSprite(col);
+        if (sprite) {
+          const extent = taper * 2.8;
+          ctx.globalAlpha = glow * 0.8;
+          ctx.drawImage(sprite, p.x - extent, p.y - extent, extent * 2, extent * 2);
+          ctx.globalAlpha = 1;
+        }
+      }
+      ctx.fillStyle = col;
       ctx.beginPath();
-      ctx.arc(p.x, p.y, taper * 0.38, 0, Math.PI * 2);
+      ctx.arc(p.x, p.y, taper, 0, Math.PI * 2);
       ctx.fill();
+      if (skin.outline > 0) {
+        ctx.lineWidth = skin.outline;
+        ctx.strokeStyle = shade(skin.primary, 0.65);
+        ctx.stroke();
+      }
+      if (skin.pattern === "dots" && i % 3 === 1) {
+        ctx.fillStyle = skin.secondary;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, taper * 0.38, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      drawPatternOverlay(ctx, skin, points, i, taper);
+      if (skin.shading === "bead") drawBead(ctx, p, taper);
     }
-    drawPatternOverlay(ctx, skin, points, i, taper);
-    if (skin.shading === "bead") drawBead(ctx, p, taper);
   }
-  ctx.shadowBlur = 0;
-
-  if (options.boosting) drawBoostFront(ctx, skin.boost, points, r, t);
-  if (skin.sparkle) drawSparkles(ctx, skin, points, r, t);
+  if (options.boosting && glowEnabled) drawBoostFront(ctx, skin.boost, points, r, t);
+  if (skin.sparkle && glowEnabled) drawSparkles(ctx, skin, points, r, t);
   if (sprite) drawSpriteHead(ctx, sprite.head, points, r);
   else drawEyes(ctx, skin, points, r, options.lookAt ?? null, options.boosting, t);
   ctx.restore();
@@ -233,11 +358,11 @@ function drawSpriteBody(
     const q = points[Math.max(0, i - 1)]!;
     const ang = Math.atan2(q.y - p.y, q.x - p.x);
     const taper = r * (1 - (i / n) * 0.35);
-    ctx.save();
     ctx.translate(p.x, p.y);
     ctx.rotate(ang);
     ctx.drawImage(img, -len / 2, -taper, len, taper * 2);
-    ctx.restore();
+    ctx.rotate(-ang);
+    ctx.translate(-p.x, -p.y);
   }
 }
 
@@ -259,7 +384,6 @@ function drawSpriteHead(
 
 /** Glossy "ball" look: dark rim + soft highlight. Two cheap fills per segment. */
 function drawBead(ctx: CanvasRenderingContext2D, p: Point, taper: number) {
-  ctx.shadowBlur = 0;
   ctx.lineWidth = Math.max(1, taper * 0.12);
   ctx.strokeStyle = "rgba(0,0,0,0.28)";
   ctx.beginPath();
@@ -294,7 +418,6 @@ function drawPatternOverlay(
     const side = (i >> 1) % 2 === 0 ? 1 : -1;
     const x = p.x + Math.cos(ang) * side * taper * 0.35;
     const y = p.y + Math.sin(ang) * side * taper * 0.35;
-    ctx.shadowBlur = 0;
     ctx.fillStyle = skin.secondary;
     ctx.beginPath();
     ctx.arc(x, y, taper * 0.42, 0, Math.PI * 2);
@@ -306,7 +429,6 @@ function drawPatternOverlay(
   } else if (skin.pattern === "scales") {
     // A lighter crescent on the front edge of each segment looks like overlapping scales.
     const ang = headingAt(points, i);
-    ctx.shadowBlur = 0;
     ctx.strokeStyle = skin.secondary;
     ctx.globalAlpha = 0.55;
     ctx.lineWidth = Math.max(1, taper * 0.22);
@@ -317,7 +439,6 @@ function drawPatternOverlay(
   } else if (skin.pattern === "galaxy" && i % 2 === 0) {
     const a = hash(i * 3.7) * Math.PI * 2;
     const d = taper * 0.5 * hash(i * 1.3 + 2);
-    ctx.shadowBlur = 0;
     ctx.fillStyle = "#ffffff";
     ctx.globalAlpha = 0.5 + 0.5 * hash(i + 9);
     ctx.beginPath();
@@ -359,7 +480,7 @@ function drawEyes(
   const look = e.followMouse && lookAt ? Math.atan2(lookAt.y - h.y, lookAt.x - h.x) : ang;
   const cyclops = e.shape === "cyclops";
   const er = r * (cyclops ? 0.62 : e.shape === "cute" ? 0.48 : 0.4);
-  const spots = cyclops ? [0] : [-1, 1];
+  const spots = cyclops ? SINGLE_EYE_SPOT : PAIRED_EYE_SPOTS;
 
   for (const side of spots) {
     const cx = h.x + fx * r * 0.35 + px * side * r * 0.5;
@@ -376,7 +497,7 @@ function drawEyes(
       ctx.moveTo(0, hs * 0.85);
       ctx.bezierCurveTo(-hs * 1.35, -hs * 0.1, -hs * 0.6, -hs * 1.0, 0, -hs * 0.35);
       ctx.bezierCurveTo(hs * 0.6, -hs * 1.0, hs * 1.35, -hs * 0.1, 0, hs * 0.85);
-      if (blink || (boosting && e.shape === "sleepy")) {
+      if (blink) {
         ctx.lineWidth = Math.max(1.5, er * 0.25);
         ctx.strokeStyle = e.color;
         ctx.beginPath();
@@ -460,12 +581,9 @@ function drawSparkles(
     const d = r * (0.8 + phase * 1.6);
     const s = (1 - phase) * r * 0.34;
     ctx.globalAlpha = 1 - phase;
-    ctx.shadowColor = skin.secondary;
-    ctx.shadowBlur = 10;
     star(ctx, p.x + Math.cos(a) * d, p.y + Math.sin(a) * d, s);
   }
   ctx.globalAlpha = 1;
-  ctx.shadowBlur = 0;
 }
 
 function star(ctx: CanvasRenderingContext2D, x: number, y: number, s: number) {
@@ -501,8 +619,6 @@ function drawAura(
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
   ctx.strokeStyle = color;
-  ctx.shadowColor = color;
-  ctx.shadowBlur = width * 0.6;
   ctx.globalAlpha = alpha;
   ctx.lineWidth = width * 2;
   ctx.beginPath();
@@ -531,11 +647,9 @@ function drawBoostBack(
     ctx.lineCap = "round";
     ctx.lineWidth = r * 3.2;
     ctx.globalAlpha = 0.42 * pulse;
-    ctx.shadowBlur = r * 1.4;
     for (let i = 0; i + step < n; i += step) {
       const c = `hsl(${(i * 7 - t * 0.28) % 360} 100% 60%)`;
       ctx.strokeStyle = c;
-      ctx.shadowColor = c;
       ctx.beginPath();
       ctx.moveTo(points[i]!.x, points[i]!.y);
       ctx.lineTo(points[i + step]!.x, points[i + step]!.y);
@@ -601,12 +715,9 @@ function drawBoostFront(
         else ctx.lineTo(x, y);
       }
       ctx.strokeStyle = "#22e4ff";
-      ctx.shadowColor = "#22e4ff";
-      ctx.shadowBlur = 16;
       ctx.lineWidth = 3.2;
       ctx.globalAlpha = 0.9;
       ctx.stroke();
-      ctx.shadowBlur = 0;
       ctx.strokeStyle = "#ffffff";
       ctx.lineWidth = 1.2;
       ctx.stroke();
@@ -672,8 +783,6 @@ function drawBoostFront(
         const off = r * (hash(k + 6) * 1.1) * side;
         ctx.globalAlpha = 0.35 + 0.65 * tw;
         ctx.fillStyle = k % 3 === 0 ? "#ffffff" : k % 3 === 1 ? "#ffe27a" : "#ffb3f0";
-        ctx.shadowColor = "#ffe27a";
-        ctx.shadowBlur = 8;
         star(
           ctx,
           p.x + Math.cos(a) * off,

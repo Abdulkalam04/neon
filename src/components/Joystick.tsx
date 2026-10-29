@@ -1,168 +1,268 @@
-import { useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 
-type JoystickMode = "floating" | "fixed";
+const JOYSTICK_RADIUS = 50;
+const DEAD_ZONE = 11;
+const DOUBLE_TAP_WINDOW_MS = 280;
+const DOUBLE_TAP_BOOST_MS = 520;
+
+type PointerEventHandler = (event: ReactPointerEvent<HTMLDivElement>) => void;
 
 export function Joystick({
   onAngle,
   onBoost,
-  mode = "floating",
+  controlScale = 1,
+  opacity = 0.8,
 }: {
-  onAngle: (a: number | null) => void;
-  onBoost: (b: boolean) => void;
-  mode?: JoystickMode;
+  onAngle: (angle: number | null) => void;
+  onBoost: (boosting: boolean) => void;
+  controlScale?: number;
+  opacity?: number;
 }) {
   const activeStick = useRef<number | null>(null);
+  const activeRightTap = useRef<number | null>(null);
   const activeBoost = useRef<number | null>(null);
   const lastRightTap = useRef(0);
-  const boostTapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const boostTapTimer = useRef<number | null>(null);
+  const centerRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const surface = useRef<HTMLDivElement>(null);
   const base = useRef<HTMLDivElement>(null);
+  const knob = useRef<HTMLDivElement>(null);
   const callbacks = useRef({ onAngle, onBoost });
-  callbacks.current = { onAngle, onBoost };
-  const [origin, setOrigin] = useState({ x: 0, y: 0 });
-  const [knob, setKnob] = useState({ x: 0, y: 0 });
   const [boosting, setBoosting] = useState(false);
-  const R = 50;
+  callbacks.current = { onAngle, onBoost };
 
-  const resetStick = () => {
+  const hideStick = useCallback(() => {
     activeStick.current = null;
-    setKnob({ x: 0, y: 0 });
-    onAngle(null);
-  };
-  const move = (e: React.PointerEvent) => {
-    const b = base.current?.getBoundingClientRect();
-    if (!b) return;
-    const cx = mode === "floating" ? origin.x : b.left + b.width / 2;
-    const cy = mode === "floating" ? origin.y : b.top + b.height / 2;
-    const dx = e.clientX - cx;
-    const dy = e.clientY - cy;
-    const d = Math.hypot(dx, dy);
-    const k = d > R ? R / d : 1;
-    setKnob({ x: dx * k, y: dy * k });
-    if (d > 12) onAngle(Math.atan2(dy, dx));
-  };
-  const boostEnd = () => {
+    if (base.current) {
+      base.current.style.transition = "none";
+      base.current.style.opacity = "0";
+      base.current.style.visibility = "hidden";
+    }
+    if (knob.current) {
+      knob.current.style.transform = "translate3d(0, 0, 0)";
+    }
+    callbacks.current.onAngle(null);
+  }, []);
+
+  const reset = useCallback(() => {
+    hideStick();
+    activeRightTap.current = null;
+    lastRightTap.current = 0;
     activeBoost.current = null;
+    if (boostTapTimer.current !== null) {
+      window.clearTimeout(boostTapTimer.current);
+      boostTapTimer.current = null;
+    }
     setBoosting(false);
-    onBoost(false);
+    callbacks.current.onBoost(false);
+  }, [hideStick]);
+
+  const updateStick = (clientX: number, clientY: number) => {
+    const stickKnob = knob.current;
+    if (!stickKnob) return;
+
+    const dx = clientX - centerRef.current.x;
+    const dy = clientY - centerRef.current.y;
+    const distance = Math.hypot(dx, dy);
+    const radius = JOYSTICK_RADIUS * controlScale;
+    const scale = distance > radius ? radius / distance : 1;
+    const knobX = dx * scale;
+    const knobY = dy * scale;
+
+    stickKnob.style.transform = `translate3d(${knobX}px, ${knobY}px, 0)`;
+    callbacks.current.onAngle(distance > DEAD_ZONE ? Math.atan2(dy, dx) : null);
+  };
+
+  const startStick: PointerEventHandler = (event) => {
+    if (event.button !== 0 || activeStick.current !== null) return;
+
+    // Do not start joystick if touch lands on a HUD button, link, or interactive card
+    const target = event.target as HTMLElement | null;
+    if (target?.closest("button, [role='button'], a, input, .hud-card")) {
+      return;
+    }
+    const hit = document.elementFromPoint(event.clientX, event.clientY);
+    if (hit?.closest("button, [role='button'], a, input, .hud-card")) {
+      return;
+    }
+
+    activeStick.current = event.pointerId;
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      // Ignore pointer capture errors
+    }
+
+    centerRef.current = { x: event.clientX, y: event.clientY };
+
+    const stick = base.current;
+    const stickKnob = knob.current;
+    if (stick) {
+      stick.style.transform = `translate3d(${event.clientX}px, ${event.clientY}px, 0) translate(-50%, -50%) scale(${controlScale})`;
+      stick.style.visibility = "visible";
+      stick.style.transition = "opacity 100ms ease-out";
+      stick.style.opacity = String(opacity);
+    }
+    if (stickKnob) {
+      stickKnob.style.transform = "translate3d(0, 0, 0)";
+    }
+
+    callbacks.current.onAngle(null);
+  };
+
+  const moveStick: PointerEventHandler = (event) => {
+    if (activeStick.current !== event.pointerId) return;
+    const coalesced = event.nativeEvent.getCoalescedEvents?.();
+    if (coalesced && coalesced.length > 0) {
+      for (const sample of coalesced) {
+        if (sample) {
+          updateStick(sample.clientX, sample.clientY);
+        }
+      }
+    } else {
+      updateStick(event.clientX, event.clientY);
+    }
+  };
+
+  const endStick: PointerEventHandler = (event) => {
+    if (activeStick.current === event.pointerId) {
+      if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+        try {
+          event.currentTarget.releasePointerCapture(event.pointerId);
+        } catch {
+          // Ignore
+        }
+      }
+      hideStick();
+    }
+  };
+
+  const endRightTap: PointerEventHandler = (event) => {
+    if (activeRightTap.current === event.pointerId) {
+      if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+        try {
+          event.currentTarget.releasePointerCapture(event.pointerId);
+        } catch {
+          // Ignore
+        }
+      }
+      activeRightTap.current = null;
+    }
   };
 
   useEffect(() => {
-    const reset = () => {
-      activeStick.current = null;
-      activeBoost.current = null;
-      if (boostTapTimer.current) clearTimeout(boostTapTimer.current);
-      boostTapTimer.current = null;
-      setKnob({ x: 0, y: 0 });
-      setBoosting(false);
+    const onVisibilityChange = () => {
+      if (document.hidden) reset();
+    };
+    window.addEventListener("neon-reset-input", reset);
+    window.addEventListener("blur", reset);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      window.removeEventListener("neon-reset-input", reset);
+      window.removeEventListener("blur", reset);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      if (boostTapTimer.current !== null) window.clearTimeout(boostTapTimer.current);
       callbacks.current.onAngle(null);
       callbacks.current.onBoost(false);
     };
-    window.addEventListener("neon-reset-input", reset);
-    return () => {
-      window.removeEventListener("neon-reset-input", reset);
-      if (boostTapTimer.current) clearTimeout(boostTapTimer.current);
-    };
-  }, []);
+  }, [reset]);
 
   return (
     <>
-      {mode === "floating" && (
-        <div
-          className="joystick-surface"
-          onPointerDown={(e) => {
-            if (e.clientX > window.innerWidth / 2 || activeStick.current !== null) return;
-            activeStick.current = e.pointerId;
-            e.currentTarget.setPointerCapture(e.pointerId);
-            setOrigin({ x: e.clientX, y: e.clientY });
-            setKnob({ x: 0, y: 0 });
-            onAngle(null);
-          }}
-          onPointerMove={(e) => {
-            if (activeStick.current === e.pointerId) move(e);
-          }}
-          onPointerUp={(e) => {
-            if (activeStick.current === e.pointerId) resetStick();
-          }}
-          onPointerCancel={(e) => {
-            if (activeStick.current === e.pointerId) resetStick();
-          }}
-          onLostPointerCapture={(e) => {
-            if (activeStick.current === e.pointerId) resetStick();
-          }}
-        />
-      )}
+      <div
+        ref={surface}
+        className="joystick-surface"
+        onPointerDown={startStick}
+        onPointerMove={moveStick}
+        onPointerUp={endStick}
+        onPointerCancel={endStick}
+        onLostPointerCapture={endStick}
+      />
       <div
         className="boost-surface"
-        onPointerDown={(e) => {
-          if (e.pointerType === "mouse" || e.clientX <= window.innerWidth / 2) return;
+        onPointerDown={(event) => {
+          if (
+            event.pointerType === "mouse" ||
+            event.button !== 0 ||
+            activeRightTap.current !== null
+          ) {
+            return;
+          }
+          activeRightTap.current = event.pointerId;
+          try {
+            event.currentTarget.setPointerCapture(event.pointerId);
+          } catch {
+            // Ignore
+          }
           const now = performance.now();
-          if (now - lastRightTap.current < 280) {
-            onBoost(true);
-            navigator.vibrate?.(12);
-            if (boostTapTimer.current) clearTimeout(boostTapTimer.current);
+          if (now - lastRightTap.current < DOUBLE_TAP_WINDOW_MS) {
+            callbacks.current.onBoost(true);
+            if (boostTapTimer.current !== null) window.clearTimeout(boostTapTimer.current);
             boostTapTimer.current = window.setTimeout(() => {
               boostTapTimer.current = null;
-              onBoost(false);
-            }, 520);
+              callbacks.current.onBoost(false);
+            }, DOUBLE_TAP_BOOST_MS);
           }
           lastRightTap.current = now;
         }}
+        onPointerUp={endRightTap}
+        onPointerCancel={endRightTap}
+        onLostPointerCapture={endRightTap}
       />
       <div
         ref={base}
-        className={`joystick glass touch-none rounded-full ${mode === "fixed" ? "joystick-fixed" : "joystick-floating"}`}
+        aria-hidden="true"
+        className="joystick glass rounded-full"
         style={
-          mode === "floating"
-            ? { left: origin.x, top: origin.y, transform: "translate(-50%, -50%)" }
-            : undefined
+          {
+            "--control-scale": controlScale,
+            "--joystick-opacity": opacity,
+          } as React.CSSProperties
         }
-        onPointerDown={(e) => {
-          if (mode === "floating") return;
-          if (activeStick.current !== null) return;
-          activeStick.current = e.pointerId;
-          e.currentTarget.setPointerCapture(e.pointerId);
-          if (mode === "floating") setOrigin({ x: e.clientX, y: e.clientY });
-          move(e);
-        }}
-        onPointerMove={(e) => {
-          if (activeStick.current === e.pointerId) move(e);
-        }}
-        onPointerUp={(e) => {
-          if (activeStick.current === e.pointerId) resetStick();
-        }}
-        onPointerCancel={(e) => {
-          if (activeStick.current === e.pointerId) resetStick();
-        }}
-        onLostPointerCapture={(e) => {
-          if (activeStick.current === e.pointerId) resetStick();
-        }}
       >
         <span className="joystick-arrow" aria-hidden />
-        <div
-          className="joystick-knob"
-          style={{ transform: `translate(calc(-50% + ${knob.x}px), calc(-50% + ${knob.y}px))` }}
-        />
+        <div ref={knob} className="joystick-knob" />
       </div>
       <button
         id="boost-btn"
+        type="button"
         aria-label="Boost"
         className={`boost-control neon-btn glow-magenta ${boosting ? "boosting" : ""}`}
-        onPointerDown={(e) => {
-          if (activeBoost.current !== null) return;
-          activeBoost.current = e.pointerId;
-          e.currentTarget.setPointerCapture(e.pointerId);
+        style={{ "--control-scale": controlScale } as React.CSSProperties}
+        onPointerDown={(event) => {
+          if (event.button !== 0 || activeBoost.current !== null) return;
+          activeBoost.current = event.pointerId;
+          try {
+            event.currentTarget.setPointerCapture(event.pointerId);
+          } catch {
+            // Ignore
+          }
           setBoosting(true);
-          onBoost(true);
-          navigator.vibrate?.(12);
+          callbacks.current.onBoost(true);
         }}
-        onPointerUp={(e) => {
-          if (activeBoost.current === e.pointerId) boostEnd();
+        onPointerUp={(event) => {
+          if (activeBoost.current !== event.pointerId) return;
+          activeBoost.current = null;
+          setBoosting(false);
+          callbacks.current.onBoost(false);
         }}
-        onPointerCancel={(e) => {
-          if (activeBoost.current === e.pointerId) boostEnd();
+        onPointerCancel={(event) => {
+          if (activeBoost.current !== event.pointerId) return;
+          activeBoost.current = null;
+          setBoosting(false);
+          callbacks.current.onBoost(false);
         }}
-        onLostPointerCapture={(e) => {
-          if (activeBoost.current === e.pointerId) boostEnd();
+        onLostPointerCapture={(event) => {
+          if (activeBoost.current !== event.pointerId) return;
+          activeBoost.current = null;
+          setBoosting(false);
+          callbacks.current.onBoost(false);
         }}
       >
         <span className="boost-ring" aria-hidden />

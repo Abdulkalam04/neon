@@ -18,8 +18,11 @@ interface GameState {
   showFps: boolean;
   quality: GraphicsQuality;
   batterySaver: boolean;
-  lockLandscape: boolean;
   tutorialSeen: boolean;
+  reduceMotion: boolean;
+  controlScale: number;
+  joystickSize: JoystickSize;
+  joystickOpacity: number;
   /** Ids of favourited skin presets ("skin:tiger"). */
   favorites: string[];
   /** The snake last chosen on the Snakes tab; the Style tab's "Default" design restores it. */
@@ -38,9 +41,20 @@ interface GameState {
   setShowFps: (s: boolean) => void;
   setQuality: (q: GraphicsQuality) => void;
   setBatterySaver: (enabled: boolean) => void;
-  setLockLandscape: (enabled: boolean) => void;
   setTutorialSeen: (s: boolean) => void;
+  setReduceMotion: (enabled: boolean) => void;
+  setControlScale: (scale: number) => void;
+  setJoystickSize: (size: JoystickSize) => void;
+  setJoystickOpacity: (opacity: number) => void;
 }
+
+export type JoystickSize = "S" | "M" | "L";
+
+export const JOYSTICK_SIZE_SCALES: Record<JoystickSize, number> = {
+  S: 0.85,
+  M: 1.0,
+  L: 1.2,
+};
 
 /** Accessories were removed from the game: never keep one, even from an old saved skin. */
 const noAccessories = (skin: SnakeSkin): SnakeSkin => ({
@@ -63,8 +77,11 @@ export const useGameStore = create<GameState>()(
       showFps: false,
       quality: "auto",
       batterySaver: false,
-      lockLandscape: false,
       tutorialSeen: false,
+      reduceMotion: false,
+      controlScale: 1,
+      joystickSize: "M",
+      joystickOpacity: 0.8,
       favorites: [],
       basePresetId: "neon",
       setBasePresetId: (basePresetId) => set({ basePresetId }),
@@ -87,8 +104,20 @@ export const useGameStore = create<GameState>()(
       setShowFps: (showFps) => set({ showFps }),
       setQuality: (quality) => set({ quality }),
       setBatterySaver: (batterySaver) => set({ batterySaver }),
-      setLockLandscape: (lockLandscape) => set({ lockLandscape }),
       setTutorialSeen: (tutorialSeen) => set({ tutorialSeen }),
+      setReduceMotion: (reduceMotion) => set({ reduceMotion }),
+      setControlScale: (controlScale) => {
+        const clamped = Math.max(0.8, Math.min(1.3, controlScale));
+        const size: JoystickSize = clamped < 0.92 ? "S" : clamped > 1.1 ? "L" : "M";
+        set({ controlScale: clamped, joystickSize: size });
+      },
+      setJoystickSize: (joystickSize) =>
+        set({
+          joystickSize,
+          controlScale: JOYSTICK_SIZE_SCALES[joystickSize] ?? 1.0,
+        }),
+      setJoystickOpacity: (joystickOpacity) =>
+        set({ joystickOpacity: Math.max(0.2, Math.min(1, joystickOpacity)) }),
     }),
     {
       name: "neon-serpent",
@@ -97,7 +126,8 @@ export const useGameStore = create<GameState>()(
       skipHydration: true,
       // Old saved skins may lack newer fields (hat/back/wings...): fill them from defaults.
       merge: (persisted, current) => {
-        const p = (persisted ?? {}) as Partial<GameState>;
+        const p = { ...((persisted ?? {}) as Partial<GameState> & { lockLandscape?: boolean }) };
+        delete p.lockLandscape;
         const skin = noAccessories({ ...DEFAULT_SKIN, ...(p.skin ?? {}) });
         skin.eyes = { ...DEFAULT_SKIN.eyes, ...(p.skin?.eyes ?? {}) };
         return {
@@ -119,6 +149,23 @@ export const useGameStore = create<GameState>()(
               ? p.quality
               : "auto",
           batterySaver: typeof p.batterySaver === "boolean" ? p.batterySaver : false,
+          reduceMotion: typeof p.reduceMotion === "boolean" ? p.reduceMotion : false,
+          controlScale:
+            typeof p.controlScale === "number" ? Math.max(0.8, Math.min(1.3, p.controlScale)) : 1,
+          joystickSize:
+            p.joystickSize === "S" || p.joystickSize === "M" || p.joystickSize === "L"
+              ? p.joystickSize
+              : p.controlScale
+                ? p.controlScale < 0.92
+                  ? "S"
+                  : p.controlScale > 1.1
+                    ? "L"
+                    : "M"
+                : "M",
+          joystickOpacity:
+            typeof p.joystickOpacity === "number"
+              ? Math.max(0.2, Math.min(1, p.joystickOpacity))
+              : 0.8,
         };
       },
       migrate: (persisted) => {

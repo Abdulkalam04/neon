@@ -43,4 +43,18 @@ describe("adaptive graphics profile logic", () => {
     expect(autoTuneStep(0, "up", true)).toBe(0);
     expect(autoTuneStep(6, "down", true)).toBe(6);
   });
+
+  it("uses aggressively reduced effects for the two weakest tiers", () => {
+    const tier0 = profileFor("auto", 0);
+    const tier1 = profileFor("auto", 1);
+    const tier2 = profileFor("auto", 2);
+
+    expect(tier0.resolutionScale).toBeLessThan(tier1.resolutionScale);
+    expect(tier1.resolutionScale).toBeLessThan(tier2.resolutionScale);
+    expect(tier0.maxParticles).toBe(8);
+    expect(tier1.maxParticles).toBe(20);
+    expect(tier0.glow).toBe(false);
+    expect(tier1.glow).toBe(false);
+    expect(profileFor("auto", 1, 1).resolutionScale).toBeLessThan(tier1.resolutionScale);
+  });
 });

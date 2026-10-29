@@ -122,14 +122,25 @@ export async function vibrate(kind: "boost" | "big-eat" | "death") {
   navigator.vibrate(pattern);
 }
 
-export async function setLandscapeLock(enabled: boolean) {
-  if (!isNative()) return;
-  const { ScreenOrientation } = await import("@capacitor/screen-orientation");
-  if (enabled) {
-    await ScreenOrientation.lock({ orientation: "landscape" });
-  } else {
-    await ScreenOrientation.unlock();
+export async function vibrateTap() {
+  if (isNative()) {
+    const { Haptics, ImpactStyle } = await import("@capacitor/haptics");
+    await Haptics.impact({ style: ImpactStyle.Light });
+    return;
   }
+  if (typeof navigator !== "undefined" && navigator.vibrate) navigator.vibrate(10);
+}
+
+let landscapeLock: Promise<void> | undefined;
+
+export function lockLandscape() {
+  if (!isNative()) return Promise.resolve();
+  if (!landscapeLock) {
+    landscapeLock = import("@capacitor/screen-orientation").then(({ ScreenOrientation }) =>
+      ScreenOrientation.lock({ orientation: "landscape" }),
+    );
+  }
+  return landscapeLock;
 }
 
 export async function setKeepAwake(enabled: boolean) {

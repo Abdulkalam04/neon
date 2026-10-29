@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { GraphicsQuality } from "@/lib/store";
+import type { GraphicsQuality, JoystickSize } from "@/lib/store";
 import type { AutoTier } from "@/lib/qualityProfile";
 
 export interface HudData {
@@ -17,6 +17,7 @@ export interface HudData {
 export interface DeathStats {
   killedBy: string | null;
   finalScore: number;
+  rank?: number;
   bestScore: number;
   seconds: number;
   kills: number;
@@ -32,41 +33,41 @@ export function ScorePanel({
   onToggleMute: () => void;
 }) {
   return (
-    <div className="glass pointer-events-auto rounded-xl px-4 py-3">
-      <div className="flex items-start justify-between gap-6">
+    <div className="glass hud-card pointer-events-auto rounded-xl px-3 py-2">
+      <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-[10px] tracking-widest text-muted-foreground uppercase">Length</p>
-          <p className="font-display text-3xl leading-tight text-primary tabular-nums">
+          <p className="text-xs tracking-widest text-foreground/90 uppercase">Score</p>
+          <p className="font-display text-2xl leading-tight text-primary tabular-nums">
             {data.score}
           </p>
         </div>
         <button
           onClick={onToggleMute}
           aria-label={muted ? "Unmute sound" : "Mute sound"}
-          className="rounded-lg border border-border px-2 py-1 text-sm transition hover:border-primary"
+          className="grid min-h-11 min-w-11 place-items-center rounded-lg border border-border px-2 py-1 text-sm transition hover:border-primary"
         >
           {muted ? "🔇" : "🔊"}
         </button>
       </div>
-      <p className="text-sm text-foreground/90">
-        Rank <span className="font-bold text-primary">{data.rank || "–"}</span> of {data.total}
+      <p className="text-sm text-foreground">
+        #{data.rank || "–"}{" "}
+        <span className="text-foreground/80">
+          of {data.total} · {data.kills} kills
+        </span>
       </p>
-      <p className="text-xs text-muted-foreground">{data.kills} kills</p>
     </div>
   );
 }
 
 export function Leaderboard({ rows }: { rows: HudData["rows"] }) {
   return (
-    <div className="glass w-44 rounded-xl p-3 sm:w-56">
-      <p className="mb-1.5 text-[10px] tracking-widest text-muted-foreground uppercase">
-        Leaderboard
-      </p>
+    <div className="glass hud-card w-40 rounded-xl p-2 sm:w-48">
+      <p className="mb-1 text-xs tracking-widest text-foreground uppercase">Leaderboard</p>
       <ol className="space-y-0.5 text-xs sm:text-sm">
         {rows.map((r, i) => (
           <li
             key={r.id}
-            className={`flex justify-between gap-2 rounded px-1.5 ${r.me ? "bg-primary/15 font-bold text-primary" : "text-foreground/80"}`}
+            className={`flex justify-between gap-2 rounded px-1.5 text-sm ${r.me ? "bg-primary/15 font-bold text-primary" : "text-foreground"}`}
           >
             <span className="truncate">
               <span className="text-muted-foreground">{i + 1}.</span> {r.name}
@@ -81,19 +82,19 @@ export function Leaderboard({ rows }: { rows: HudData["rows"] }) {
 
 export function BoostMeter({ data }: { data: HudData }) {
   return (
-    <div className="glass w-44 rounded-xl px-4 py-3">
-      <div className="mb-1.5 flex items-center justify-between text-[10px] tracking-widest uppercase">
+    <div className="glass hud-card w-36 rounded-xl px-3 py-2">
+      <div className="mb-1 flex items-center justify-between text-xs tracking-widest uppercase">
         <span className={data.boosting ? "text-accent" : "text-muted-foreground"}>
           {data.boosting ? "Boosting" : "Boost"}
         </span>
-        <span className={data.canBoost ? "text-neon-lime" : "text-destructive"}>
-          {data.canBoost ? "Ready" : "Too short"}
+        <span className={data.canBoost ? "text-neon-lime" : "text-foreground/90"}>
+          {data.canBoost ? "Ready" : "Grow"}
         </span>
       </div>
       <div className="h-2 overflow-hidden rounded-full bg-muted">
         <div
           className={`h-full rounded-full transition-[width] duration-200 ${
-            data.boosting ? "bg-accent shadow-[0_0_12px_var(--neon-magenta)]" : "bg-neon-lime"
+            data.boosting ? "bg-accent" : "bg-neon-lime"
           }`}
           style={{ width: `${Math.round(data.fuel * 100)}%` }}
         />
@@ -105,7 +106,7 @@ export function BoostMeter({ data }: { data: HudData }) {
 export function Overlay({ children, dim = false }: { children: ReactNode; dim?: boolean }) {
   return (
     <div
-      className={`absolute inset-0 z-20 flex items-center justify-center overflow-y-auto p-4 animate-float-in safe-top safe-bottom safe-left safe-right sm:p-5 ${dim ? "bg-background/85 backdrop-blur-md" : "bg-background/55 backdrop-blur-sm"}`}
+      className={`modal-backdrop absolute inset-0 z-20 flex items-center justify-center overflow-y-auto p-4 screen-enter safe-top safe-bottom safe-left safe-right sm:p-5 ${dim ? "bg-background/90" : "bg-background/75"}`}
     >
       <div className="glass m-auto flex max-h-full w-full max-w-xl flex-col items-center overflow-y-auto rounded-3xl px-5 py-8 sm:px-6 sm:py-10">
         {children}
@@ -123,6 +124,10 @@ export function PauseMenu(props: {
   showFps: boolean;
   quality: GraphicsQuality;
   autoTier: AutoTier;
+  controlScale: number;
+  joystickSize?: JoystickSize;
+  joystickOpacity?: number;
+  reduceMotion: boolean;
   onResume: () => void;
   onCancelCountdown: () => void;
   onRestart: () => void;
@@ -133,10 +138,14 @@ export function PauseMenu(props: {
   onVibrationEnabled: (enabled: boolean) => void;
   onShowFps: (s: boolean) => void;
   onQuality: (q: GraphicsQuality) => void;
+  onControlScale: (scale: number) => void;
+  onJoystickSize?: (size: JoystickSize) => void;
+  onJoystickOpacity?: (opacity: number) => void;
+  onReduceMotion: (enabled: boolean) => void;
 }) {
   return (
     <div
-      className="pause-overlay absolute inset-0 z-50 flex items-center justify-center overflow-y-auto p-3 safe-top safe-bottom safe-left safe-right sm:p-5"
+      className="pause-overlay modal-backdrop screen-enter absolute inset-0 z-50 flex items-center justify-center overflow-y-auto p-3 safe-top safe-bottom safe-left safe-right sm:p-5"
       role="dialog"
       aria-modal="true"
       aria-labelledby="pause-menu-title"
@@ -190,6 +199,59 @@ export function PauseMenu(props: {
               onPick={(value) => props.onQuality(value.toLowerCase() as GraphicsQuality)}
             />
           </Setting>
+          <Setting label="Reduce motion">
+            <Seg
+              options={["On", "Off"]}
+              value={props.reduceMotion ? "On" : "Off"}
+              onPick={(value) => props.onReduceMotion(value === "On")}
+            />
+          </Setting>
+          {props.joystickSize && props.onJoystickSize ? (
+            <Setting label="Joystick size">
+              <Seg
+                options={["S", "M", "L"]}
+                value={props.joystickSize}
+                onPick={(value) => props.onJoystickSize?.(value as JoystickSize)}
+              />
+            </Setting>
+          ) : (
+            <Setting label="Control size">
+              <div className="flex min-h-11 items-center gap-2">
+                <input
+                  type="range"
+                  min={80}
+                  max={130}
+                  step={5}
+                  value={Math.round(props.controlScale * 100)}
+                  aria-label="Touch control size"
+                  onChange={(event) => props.onControlScale(Number(event.target.value) / 100)}
+                  className="w-28 accent-primary"
+                />
+                <span className="w-10 text-right text-xs font-semibold text-foreground tabular-nums">
+                  {Math.round(props.controlScale * 100)}%
+                </span>
+              </div>
+            </Setting>
+          )}
+          {props.joystickOpacity !== undefined && props.onJoystickOpacity && (
+            <Setting label="Joystick opacity">
+              <div className="flex min-h-11 items-center gap-2">
+                <input
+                  type="range"
+                  min={20}
+                  max={100}
+                  step={5}
+                  value={Math.round(props.joystickOpacity * 100)}
+                  aria-label="Joystick opacity"
+                  onChange={(event) => props.onJoystickOpacity?.(Number(event.target.value) / 100)}
+                  className="w-28 accent-primary"
+                />
+                <span className="w-10 text-right text-xs font-semibold text-foreground tabular-nums">
+                  {Math.round(props.joystickOpacity * 100)}%
+                </span>
+              </div>
+            </Setting>
+          )}
           <Setting label="Show FPS">
             <Seg
               options={["On", "Off"]}
@@ -322,7 +384,8 @@ export function DeathScreen({
         {stats.killedBy ? <>You were eaten by {stats.killedBy}</> : <>You hit the arena wall</>}
       </h2>
       <div className="mt-8 grid w-full grid-cols-2 gap-3">
-        <Stat label="Final length" value={stats.finalScore} />
+        <Stat label="Final score" value={stats.finalScore} />
+        <Stat label="Final rank" value={stats.rank ? `#${stats.rank}` : "—"} />
         <Stat label="Longest length" value={stats.bestScore} />
         <Stat label="Survival time" value={`${mm}:${ss}`} />
         <Stat label="Kills" value={stats.kills} />
