@@ -48,10 +48,7 @@ export function updateCamera(cam: Camera, state: GameState, view: View, dt: numb
     const base = Math.max(0.78, Math.min(1.12, Math.min(view.w, view.h) / 680));
     cam.baseZoom = base;
     // Zoom out as the snake gets thicker so a big snake still sees enough of the arena.
-    const size = Math.max(
-      0.5,
-      Math.pow(snakeRadius(CFG.startLength) / snakeRadius(p.length), 0.3),
-    );
+    const size = Math.max(0.5, Math.pow(snakeRadius(CFG.startLength) / snakeRadius(p.length), 0.3));
     cam.zoom += (base * size - cam.zoom) * (1 - Math.exp(-dt * 2));
   }
 }

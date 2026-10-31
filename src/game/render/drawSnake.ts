@@ -147,7 +147,7 @@ function glowSprite(color: string): HTMLCanvasElement | null {
     if (colorHueCache.size >= 256) colorHueCache.clear();
     colorHueCache.set(color, hue);
   }
-  const key = (((Math.round(hue / 30) % 12) + 12) % 12) || 0;
+  const key = ((Math.round(hue / 30) % 12) + 12) % 12 || 0;
   if (snakeGlowSprites.has(key)) return snakeGlowSprites.get(key) ?? null;
   const canvas = document.createElement("canvas");
   canvas.width = canvas.height = 64;
