@@ -275,7 +275,6 @@
 }
 
 .neon-btn {
-  position: relative;
   border-radius: var(--radius-xl);
   border: 1px solid color-mix(in oklab, var(--glow) 60%, transparent);
   background: color-mix(in oklab, var(--glow) 12%, transparent);
@@ -291,6 +290,43 @@
 .neon-btn:active {
   transform: scale(0.97);
   opacity: 0.88;
+}
+
+/* Only default to relative: this unlayered rule would otherwise beat Tailwind's
+   layered `absolute`/`fixed` utilities and push corner buttons into the page flow. */
+.neon-btn:not(.absolute, .fixed, .sticky) {
+  position: relative;
+}
+
+/* Soft neon glow on every neon button. */
+.neon-btn {
+  box-shadow:
+    0 0 10px color-mix(in oklab, var(--glow) 35%, transparent),
+    inset 0 0 8px color-mix(in oklab, var(--glow) 15%, transparent);
+}
+.neon-btn:hover {
+  box-shadow:
+    0 0 16px color-mix(in oklab, var(--glow) 55%, transparent),
+    inset 0 0 10px color-mix(in oklab, var(--glow) 22%, transparent);
+}
+
+/* Selected option (e.g. chosen difficulty): strong glow + bright border. */
+.neon-btn[aria-pressed="true"] {
+  border-width: 2px;
+  border-color: var(--glow);
+  background: color-mix(in oklab, var(--glow) 28%, var(--background));
+  box-shadow:
+    0 0 22px color-mix(in oklab, var(--glow) 75%, transparent),
+    0 0 4px var(--glow),
+    inset 0 0 14px color-mix(in oklab, var(--glow) 35%, transparent);
+}
+/* Unselected siblings stay readable but calmer. */
+.neon-btn[aria-pressed="false"] {
+  box-shadow: none;
+  opacity: 0.8;
+}
+.neon-btn[aria-pressed="false"]:hover {
+  opacity: 1;
 }
 
 .glow-cyan {
@@ -556,6 +592,12 @@
 .game-screen[data-quality="tier-1"] .neon-btn,
 .game-screen[data-quality="low"] .neon-btn {
   box-shadow: none;
+}
+.game-screen[data-quality="tier-0"] .neon-btn[aria-pressed="true"],
+.game-screen[data-quality="tier-1"] .neon-btn[aria-pressed="true"],
+.game-screen[data-quality="low"] .neon-btn[aria-pressed="true"] {
+  outline: 2px solid var(--glow);
+  outline-offset: 2px;
 }
 
 .game-screen[data-quality="tier-0"] .boost-control,

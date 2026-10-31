@@ -49,8 +49,8 @@ export function updateCamera(cam: Camera, state: GameState, view: View, dt: numb
     cam.baseZoom = base;
     // Zoom out as the snake gets thicker so a big snake still sees enough of the arena.
     const size = Math.max(
-      0.4,
-      Math.pow(snakeRadius(CFG.startLength) / snakeRadius(p.length), 0.55),
+      0.5,
+      Math.pow(snakeRadius(CFG.startLength) / snakeRadius(p.length), 0.3),
     );
     cam.zoom += (base * size - cam.zoom) * (1 - Math.exp(-dt * 2));
   }
@@ -213,7 +213,8 @@ export function renderGame(
   const t = opts.time;
   const low = !profile.glow;
   const orbScale = orbScreenScale(cam.zoom, cam.baseZoom);
-  const deathLimit = Math.min(120, Math.max(24, profile.maxParticles >> 2));
+  // Always able to show a whole death drop (CFG.deathOrbMax), regardless of quality tier.
+  const deathLimit = CFG.deathOrbMax;
   visibleNormalOrbs.length = 0;
   visibleDeathOrbs.length = 0;
   for (let i = 0; i < state.orbs.length; i++) {
@@ -239,7 +240,8 @@ export function renderGame(
     }
   }
   const deathBudget = visibleDeathOrbs.length;
-  const normalBudget = Math.max(0, profile.maxParticles - deathBudget);
+  // Death drops must not eat the ordinary-food budget, or food vanishes after every kill.
+  const normalBudget = profile.maxParticles;
   for (let i = 0; i < Math.min(normalBudget, visibleNormalOrbs.length); i++) {
     const o = visibleNormalOrbs[i]!;
     const pulse = profile.foodTwinkle ? 0.85 + 0.15 * Math.sin(t / 300 + o.id) : 1;
