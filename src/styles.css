@@ -294,7 +294,7 @@
 
 /* Only default to relative: this unlayered rule would otherwise beat Tailwind's
    layered `absolute`/`fixed` utilities and push corner buttons into the page flow. */
-.neon-btn:not(.absolute, .fixed, .sticky) {
+.neon-btn:where(:not(.absolute, .fixed, .sticky)) {
   position: relative;
 }
 
